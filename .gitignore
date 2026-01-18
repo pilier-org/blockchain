@@ -41,3 +41,27 @@ substrate.code-workspace
 target/
 *.scale
 justfile
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Substrate
+/chains/
+/db/
+
+# Local dev
+/tmp/
+node_modules/

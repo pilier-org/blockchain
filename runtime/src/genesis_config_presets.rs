@@ -1,112 +1,104 @@
-// This file is part of Substrate.
-
-// Copyright (C) Parity Technologies (UK) Ltd.
+// Copyright (C) 2026 Pilier Team.
 // SPDX-License-Identifier: Apache-2.0
 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// 	http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-use crate::{AccountId, BalancesConfig, RuntimeGenesisConfig, SudoConfig};
+use crate::{AccountId, Balance, BalancesConfig, RuntimeGenesisConfig, SudoConfig, UNIT};
 use alloc::{vec, vec::Vec};
 use serde_json::Value;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_consensus_grandpa::AuthorityId as GrandpaId;
+use sp_core::crypto::Ss58Codec;
+use sp_core::sr25519;
 use sp_genesis_builder::{self, PresetId};
-use sp_keyring::AccountKeyring;
 
-// Returns the genesis config presets populated with given parameters.
-fn testnet_genesis(
-	initial_authorities: Vec<(AuraId, GrandpaId)>,
-	endowed_accounts: Vec<AccountId>,
-	root: AccountId,
+pub const PILIER_TESTNET_PRESET: &str = "pilier_testnet";
+
+fn account_id_from_ss58(s: &str) -> AccountId {
+    AccountId::from_ss58check(s).expect("Invalid SS58 address")
+}
+
+fn build_genesis_config(
+    initial_authorities: Vec<(AuraId, GrandpaId)>,
+    root: AccountId,
+    endowed_accounts: Vec<(AccountId, Balance)>,
 ) -> Value {
-	let config = RuntimeGenesisConfig {
-		balances: BalancesConfig {
-			balances: endowed_accounts
-				.iter()
-				.cloned()
-				.map(|k| (k, 1u128 << 60))
-				.collect::<Vec<_>>(),
-		},
-		aura: pallet_aura::GenesisConfig {
-			authorities: initial_authorities.iter().map(|x| (x.0.clone())).collect::<Vec<_>>(),
-		},
-		grandpa: pallet_grandpa::GenesisConfig {
-			authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect::<Vec<_>>(),
-			..Default::default()
-		},
-		sudo: SudoConfig { key: Some(root) },
-		..Default::default()
-	};
+    let config = RuntimeGenesisConfig {
+        balances: BalancesConfig {
+            balances: endowed_accounts,
+            dev_accounts: None,
+        },
+        aura: pallet_aura::GenesisConfig {
+            authorities: initial_authorities.iter().map(|x| x.0.clone()).collect(),
+        },
+        grandpa: pallet_grandpa::GenesisConfig {
+            authorities: initial_authorities
+                .iter()
+                .map(|x| (x.1.clone(), 1))
+                .collect(),
+            ..Default::default()
+        },
+        sudo: SudoConfig { key: Some(root) },
+        ..Default::default()
+    };
 
-	serde_json::to_value(config).expect("Could not build genesis config.")
+    serde_json::to_value(config).expect("Could not build genesis config.")
 }
 
-/// Return the development genesis config.
-pub fn development_config_genesis() -> Value {
-	testnet_genesis(
-		vec![(
-			sp_keyring::Sr25519Keyring::Alice.public().into(),
-			sp_keyring::Ed25519Keyring::Alice.public().into(),
-		)],
-		vec![
-			AccountKeyring::Alice.to_account_id(),
-			AccountKeyring::Bob.to_account_id(),
-			AccountKeyring::AliceStash.to_account_id(),
-			AccountKeyring::BobStash.to_account_id(),
-		],
-		sp_keyring::AccountKeyring::Alice.to_account_id(),
-	)
+// Только testnet preset в runtime
+pub fn pilier_testnet_config_genesis() -> Value {
+    let sudo_key = account_id_from_ss58("5FEjCCNshkU2ptLe943S5KxGXrtXVbbXVBZJzotBD5TGdnFC");
+    let eco_pool = account_id_from_ss58("5DXmUXXz3xpQ7jyuBoGE2w5UzfrRhwF7qexgS6VcUmcTfpw7");
+    let treasury_pool = account_id_from_ss58("5Hbm2dCBEbwSUc9KxDtFP55LxZe9Mby1Nsnj3maCrVUGZ3yK");
+    let civic_pool = account_id_from_ss58("5CksTfcaZFzLV4Hvz29Lwv51Ug1322v9ZQFXDwpN62FaX4EF");
+    let team_pool = account_id_from_ss58("5HC3v3Vde9rREMrjzuawAoLRtkob33HWjaMf9Ki6uMNPpcov");
+    let reserve_pool = account_id_from_ss58("5EPWmLyfSzqHH6hZkrkra5tJcHHFKttuiQi9PWxriysQbLaP");
+    let faucet = account_id_from_ss58("5CqKvhTuH7Dhic9YrCrkEd9AdtEmBct1FF1HYAz24SpAmf9T");
+
+    let node1_aura =
+        sr25519::Public::from_ss58check("5EcdgAQ99gftvNbEdfu7zuRZonev14s9YMmact12UEuQ9ndV")
+            .unwrap();
+    let node1_grandpa = sp_core::ed25519::Public::from_ss58check(
+        "5DqEQReLbazbLWsoB9QTqmLWmZdM5KoS8x8tMKqzfBP8TdJ3",
+    )
+    .unwrap();
+    let node2_aura =
+        sr25519::Public::from_ss58check("5H3Efoj3JcwJu7oZdtj2PvRkEDS4UJ2utS1JRGXT6hDn7Ph5")
+            .unwrap();
+    let node2_grandpa = sp_core::ed25519::Public::from_ss58check(
+        "5EbdWSs3qTQrnjhNQv3vNJ2ggMLKMFB3k5KY9oDPz5FLZzQc",
+    )
+    .unwrap();
+
+    build_genesis_config(
+        vec![
+            (node1_aura.into(), node1_grandpa.into()),
+            (node2_aura.into(), node2_grandpa.into()),
+        ],
+        sudo_key,
+        vec![
+            (faucet, 1_000_000 * UNIT),
+            (eco_pool, 1_200_000 * UNIT),
+            (treasury_pool, 450_000 * UNIT),
+            (civic_pool, 600_000 * UNIT),
+            (team_pool, 450_000 * UNIT),
+            (reserve_pool, 300_000 * UNIT),
+            (node1_aura.into(), 100 * UNIT),
+            (node2_aura.into(), 100 * UNIT),
+        ],
+    )
 }
 
-/// Return the local genesis config preset.
-pub fn local_config_genesis() -> Value {
-	testnet_genesis(
-		vec![
-			(
-				sp_keyring::Sr25519Keyring::Alice.public().into(),
-				sp_keyring::Ed25519Keyring::Alice.public().into(),
-			),
-			(
-				sp_keyring::Sr25519Keyring::Bob.public().into(),
-				sp_keyring::Ed25519Keyring::Bob.public().into(),
-			),
-		],
-		AccountKeyring::iter()
-			.filter(|v| v != &AccountKeyring::One && v != &AccountKeyring::Two)
-			.map(|v| v.to_account_id())
-			.collect::<Vec<_>>(),
-		AccountKeyring::Alice.to_account_id(),
-	)
-}
-
-/// Provides the JSON representation of predefined genesis config for given `id`.
 pub fn get_preset(id: &PresetId) -> Option<Vec<u8>> {
-	let patch = match id.as_ref() {
-		sp_genesis_builder::DEV_RUNTIME_PRESET => development_config_genesis(),
-		sp_genesis_builder::LOCAL_TESTNET_RUNTIME_PRESET => local_config_genesis(),
-		_ => return None,
-	};
-	Some(
-		serde_json::to_string(&patch)
-			.expect("serialization to json is expected to work. qed.")
-			.into_bytes(),
-	)
+    let patch = match id.as_ref() {
+        PILIER_TESTNET_PRESET => pilier_testnet_config_genesis(),
+        _ => return None,
+    };
+    Some(
+        serde_json::to_string(&patch)
+            .expect("serialization to json is expected to work. qed.")
+            .into_bytes(),
+    )
 }
 
-/// List of supported presets.
 pub fn preset_names() -> Vec<PresetId> {
-	vec![
-		PresetId::from(sp_genesis_builder::DEV_RUNTIME_PRESET),
-		PresetId::from(sp_genesis_builder::LOCAL_TESTNET_RUNTIME_PRESET),
-	]
+    vec![PresetId::from(PILIER_TESTNET_PRESET)]
 }

@@ -1,19 +1,8 @@
-# Substrate Node Template
 
-A fresh [Substrate](https://substrate.io/) node, ready for hacking :rocket:
+# PILIER: The Sovereign Integrity Protocol
+## The Open Infrastructure for Verifiable Rights and Public Proofs
+A Polkadot-based PoA network with gas-abstracted environment for the public good.
 
-A standalone version of this template is available for each release of Polkadot
-in the [Substrate Developer Hub Parachain
-Template](https://github.com/substrate-developer-hub/substrate-node-template/)
-repository. The parachain template is generated directly at each Polkadot
-release branch from the [Solochain Template in
-Substrate](https://github.com/paritytech/polkadot-sdk/tree/master/templates/solochain)
-upstream
-
-It is usually best to use the stand-alone version to start a new project. All
-bugs, suggestions, and feature requests should be made upstream in the
-[Substrate](https://github.com/paritytech/polkadot-sdk/tree/master/substrate)
-repository.
 
 ## Getting Started
 
@@ -230,3 +219,7 @@ the correct dependencies, activate direnv `direnv allow`.
 Please follow the [Substrate Docker instructions
 here](https://github.com/paritytech/polkadot-sdk/blob/master/substrate/docker/README.md) to
 build the Docker container with the Substrate Node Template binary.
+
+
+### 📄 License
+This project is licensed under the Apache License 2.0 - see the file for details.
