@@ -43,7 +43,7 @@ fn build_genesis_config(
     serde_json::to_value(config).expect("Could not build genesis config.")
 }
 
-// Только testnet preset в runtime
+// Only testnet preset в runtime
 pub fn pilier_testnet_config_genesis() -> Value {
     let sudo_key = account_id_from_ss58("5FEjCCNshkU2ptLe943S5KxGXrtXVbbXVBZJzotBD5TGdnFC");
     let eco_pool = account_id_from_ss58("5DXmUXXz3xpQ7jyuBoGE2w5UzfrRhwF7qexgS6VcUmcTfpw7");
@@ -60,6 +60,7 @@ pub fn pilier_testnet_config_genesis() -> Value {
         "5DqEQReLbazbLWsoB9QTqmLWmZdM5KoS8x8tMKqzfBP8TdJ3",
     )
     .unwrap();
+
     let node2_aura =
         sr25519::Public::from_ss58check("5H3Efoj3JcwJu7oZdtj2PvRkEDS4UJ2utS1JRGXT6hDn7Ph5")
             .unwrap();
@@ -68,10 +69,19 @@ pub fn pilier_testnet_config_genesis() -> Value {
     )
     .unwrap();
 
+    let node3_aura =
+        sr25519::Public::from_ss58check("5H6bqYD2XFXdHyMKC8EMb4pLijC1rntftZUmchUiESdwPSHR")
+            .unwrap();
+    let node3_grandpa = sp_core::ed25519::Public::from_ss58check(
+        "5DHhVJFNSv9RxCQccqCpP3orPccZ7jXU1aQnuwhRNsaHsExd",
+    )
+    .unwrap();
+
     build_genesis_config(
         vec![
             (node1_aura.into(), node1_grandpa.into()),
             (node2_aura.into(), node2_grandpa.into()),
+            (node3_aura.into(), node3_grandpa.into()),
         ],
         sudo_key,
         vec![
@@ -80,9 +90,10 @@ pub fn pilier_testnet_config_genesis() -> Value {
             (treasury_pool, 450_000 * UNIT),
             (civic_pool, 600_000 * UNIT),
             (team_pool, 450_000 * UNIT),
-            (reserve_pool, 300_000 * UNIT),
+            (reserve_pool, 299_700 * UNIT),
             (node1_aura.into(), 100 * UNIT),
             (node2_aura.into(), 100 * UNIT),
+            (node3_aura.into(), 100 * UNIT),
         ],
     )
 }

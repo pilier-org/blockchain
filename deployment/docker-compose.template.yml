@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  pilier-validator:
+    container_name: pilier-validator-${VALIDATOR_NAME}
+    image: pilierorg/pilier-node:${VERSION}
+    command:
+      - "--base-path=/data"
+      - "--chain=pilier_testnet"
+      - "--validator"
+      - "--name=${VALIDATOR_NAME}"
+      - "--rpc-external"
+      - "--rpc-cors=all"
+      - "--bootnodes=${BOOTNODE_ADDR}"
+    ports:
+      - "${P2P_PORT}:30333"
+      - "${RPC_PORT}:9944"
+    volumes:
+      - validator-data:/data
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=info
+
+volumes:
+  validator-data:

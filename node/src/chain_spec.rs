@@ -87,3 +87,14 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
             .build(),
     )
 }
+
+pub fn pilier_testnet_config() -> Result<ChainSpec, String> {
+    Ok(
+        ChainSpec::builder(WASM_BINARY.ok_or("Testnet wasm not available")?, None)
+            .with_name("Pilier Testnet")
+            .with_id("pilier_testnet")
+            .with_chain_type(ChainType::Live)
+            .with_genesis_config_preset_name("pilier_testnet")
+            .build(),
+    )
+}

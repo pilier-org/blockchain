@@ -86,7 +86,7 @@ pub const MICRO_UNIT: Balance = 1;
 
 pub const EXISTENTIAL_DEPOSIT: Balance = 10 * MILLI_UNIT;
 
-pub const GENESIS_SUPPLY: Balance = 4_000_200 * UNIT;
+pub const GENESIS_SUPPLY: Balance = 4_000_000 * UNIT;
 
 #[cfg(feature = "std")]
 pub fn native_version() -> NativeVersion {
