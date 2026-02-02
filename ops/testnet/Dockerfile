@@ -7,9 +7,9 @@ WORKDIR /pilier
 COPY Cargo.toml Cargo.lock ./
 COPY runtime/Cargo.toml runtime/Cargo.toml
 COPY node/Cargo.toml node/Cargo.toml
-
-# Copy pallets (просто COPY, без bash)
+COPY node/build.rs node/build.rs
 COPY pallets ./pallets
+
 
 # Create dummy sources
 RUN mkdir -p runtime/src node/src && \
@@ -21,7 +21,6 @@ RUN cargo build --release && \
     rm -rf target/release/.fingerprint/pilier-* && \
     rm -rf target/release/deps/pilier*
 
-# Copy real source
 COPY runtime runtime
 COPY node node
 COPY pallets pallets
