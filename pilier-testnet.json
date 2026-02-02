@@ -2,12 +2,14 @@
   "name": "Pilier Testnet",
   "id": "pilier_testnet",
   "chainType": "Live",
-  "bootNodes": [
-    "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWLhtNDbU4kiexqCbtLK63iG8VtKwqtjebTUUA7T7oZXm3"
-  ],
+  "bootNodes": [],
   "telemetryEndpoints": null,
   "protocolId": null,
-  "properties": null,
+  "properties": {
+    "ss58Format": 42,
+    "tokenDecimals": 6,
+    "tokenSymbol": "PIL"
+  },
   "codeSubstitutes": {},
   "genesis": {
     "runtimeGenesis": {

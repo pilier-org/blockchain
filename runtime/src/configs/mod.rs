@@ -1,24 +1,15 @@
 // Copyright (C) 2026 Pilier Team.
 // SPDX-License-Identifier: Apache-2.0
 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// 	http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+extern crate alloc;
+use alloc::vec;
 
 // Substrate and Polkadot dependencies
 use frame_support::{
     parameter_types,
     traits::{ConstBool, ConstU8, ConstU32, ConstU64, ConstU128, VariantCountOf},
     weights::{
-        IdentityFee, Weight,
+        ConstantMultiplier, Weight, WeightToFeeCoefficients, WeightToFeePolynomial,
         constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND},
     },
 };
@@ -27,6 +18,8 @@ use pallet_transaction_payment::{ConstFeeMultiplier, FungibleAdapter, Multiplier
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::{Perbill, traits::One};
 use sp_version::RuntimeVersion;
+
+use crate::MICRO_UNIT;
 
 // Local module imports from lib.rs
 use super::{
@@ -53,8 +46,6 @@ parameter_types! {
   pub const SS58Prefix: u8 = 42;
 }
 
-/// System configuration using the Solochain default prelude.
-
 /// System configuration
 impl frame_system::Config for Runtime {
     type Block = Block;
@@ -70,12 +61,11 @@ impl frame_system::Config for Runtime {
     type SS58Prefix = SS58Prefix;
     type MaxConsumers = frame_support::traits::ConstU32<16>;
 
-    // Добавь все недостающие:
     type RuntimeOrigin = RuntimeOrigin;
     type RuntimeCall = RuntimeCall;
     type RuntimeEvent = RuntimeEvent;
     type RuntimeTask = RuntimeTask;
-    type PalletInfo = crate::PalletInfo; // Изменено!
+    type PalletInfo = crate::PalletInfo;
     type OnSetCode = ();
     type Lookup = sp_runtime::traits::AccountIdLookup<AccountId, ()>;
     type SystemWeightInfo = ();
@@ -90,6 +80,7 @@ impl frame_system::Config for Runtime {
     type PostInherents = ();
     type PostTransactions = ();
 }
+
 /// Aura consensus configuration for block production.
 impl pallet_aura::Config for Runtime {
     type AuthorityId = AuraId;
@@ -119,7 +110,6 @@ impl pallet_timestamp::Config for Runtime {
 }
 
 /// Balances configuration.
-/// ExistentialDeposit is pulled from lib.rs (set to 0.01 PIL).
 impl pallet_balances::Config for Runtime {
     type MaxLocks = ConstU32<50>;
     type MaxReserves = ();
@@ -137,17 +127,39 @@ impl pallet_balances::Config for Runtime {
     type DoneSlashHandler = ();
 }
 
+// ✅ FEES CONFIGURATION
 parameter_types! {
-  pub FeeMultiplier: Multiplier = Multiplier::one();
+    pub const TransactionByteFee: Balance = 10 * MICRO_UNIT;
+    pub FeeMultiplier: Multiplier = Multiplier::one();
 }
 
-/// Transaction payment configuration. Uses IdentityFee for simple 1:1 weight-to-fee mapping.
+pub struct WeightToFee;
+impl WeightToFeePolynomial for WeightToFee {
+    type Balance = Balance;
+
+    fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {
+        use frame_support::weights::WeightToFeeCoefficient;
+
+        let p = MICRO_UNIT;
+        let q = Balance::from(1_000_000u32);
+
+        vec![WeightToFeeCoefficient {
+            degree: 1,
+            coeff_frac: Perbill::from_rational(p, q),
+            coeff_integer: 0u128,
+            negative: false,
+        }]
+        .into()
+    }
+}
+
+/// Transaction payment configuration.
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type OnChargeTransaction = FungibleAdapter<Balances, ()>;
     type OperationalFeeMultiplier = ConstU8<5>;
-    type WeightToFee = IdentityFee<Balance>;
-    type LengthToFee = IdentityFee<Balance>;
+    type WeightToFee = WeightToFee;
+    type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }

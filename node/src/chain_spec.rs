@@ -89,12 +89,24 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
 }
 
 pub fn pilier_testnet_config() -> Result<ChainSpec, String> {
+    use serde_json::json;
+
     Ok(
         ChainSpec::builder(WASM_BINARY.ok_or("Testnet wasm not available")?, None)
             .with_name("Pilier Testnet")
             .with_id("pilier_testnet")
             .with_chain_type(ChainType::Live)
             .with_genesis_config_preset_name("pilier_testnet")
+            .with_properties(
+                json!({
+                    "tokenDecimals": 6,
+                    "tokenSymbol": "PIL",
+                    "ss58Format": 42
+                })
+                .as_object()
+                .expect("Map given; qed")
+                .clone(),
+            )
             .build(),
     )
 }

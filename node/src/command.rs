@@ -160,7 +160,9 @@ pub fn run() -> sc_cli::Result<()> {
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
 
-                        cmd.run(config, client, db, storage)
+                        let cache =
+                            SharedTrieCache::new(sp_trie::cache::CacheSize::new(50 * 1024 * 1024)); // 50MB cache
+                        cmd.run(config, client, db, storage, None)
                     }
                     BenchmarkCmd::Overhead(cmd) => {
                         let PartialComponents { client, .. } = service::new_partial(&config)?;
