@@ -1,39 +1,43 @@
 # Pilier Node - Production Dockerfile
-FROM docker.io/paritytech/ci-unified:bullseye-latest AS builder
+FROM docker.io/paritytech/ci-unified:latest AS builder
 
 WORKDIR /pilier
 
-# Build cache: dependencies first
+# Copy workspace files
 COPY Cargo.toml Cargo.lock ./
 COPY runtime/Cargo.toml runtime/Cargo.toml
 COPY node/Cargo.toml node/Cargo.toml
 
-# Create dummy source to cache dependencies
+# Copy pallets (просто COPY, без bash)
+COPY pallets ./pallets
+
+# Create dummy sources
 RUN mkdir -p runtime/src node/src && \
     echo "fn main() {}" > node/src/main.rs && \
-    echo "pub fn dummy() {}" > runtime/src/lib.rs && \
-    cargo build --release && \
-    rm -rf target/release/.fingerprint/pilier-* target/release/deps/pilier*
+    echo "pub fn dummy() {}" > runtime/src/lib.rs
 
-# Copy real source code
+# Build dependencies
+RUN cargo build --release && \
+    rm -rf target/release/.fingerprint/pilier-* && \
+    rm -rf target/release/deps/pilier*
+
+# Copy real source
 COPY runtime runtime
 COPY node node
+COPY pallets pallets
 
-# Build actual binary
+# Build
 RUN cargo build --release
 
-# Runtime stage (smaller final image)
+# Runtime stage
 FROM docker.io/parity/base-bin:latest
 
 WORKDIR /pilier
 
-# Copy binary from builder
 COPY --from=builder /pilier/target/release/pilier-node /usr/local/bin/
 
-# Verify binary works
 RUN pilier-node --version
 
-# Expose ports
 EXPOSE 30333 9944 9615
 
 ENTRYPOINT ["pilier-node"]
