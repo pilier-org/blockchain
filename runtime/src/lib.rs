@@ -174,11 +174,19 @@ mod runtime {
     #[runtime::pallet_index(6)]
     pub type Sudo = pallet_sudo;
 
+    // ORDERING CONSTRAINT — do not reorder these indices. Genesis config is built in ascending
+    // pallet-index order (`#[frame_support::runtime]` sorts pallets by index before building).
+    // `pallet-session`'s genesis build asks `ValidatorSet` (its `SessionManager`) for the initial
+    // validator set and uses it to seed the first-session Aura/GRANDPA authorities. Therefore
+    // `ValidatorSet` MUST have a lower index than `Session`, so its `Validators` storage is
+    // already seeded when `Session` reads it. If `Session` built first, it would receive an empty
+    // set, leaving the genesis authorities empty and panicking the node's consensus bootstrap
+    // ("genesis authorities is non-empty"). See ai/decisions/genesis-build-order.md.
     #[runtime::pallet_index(7)]
-    pub type Session = pallet_session;
-
-    #[runtime::pallet_index(9)]
     pub type ValidatorSet = pallet_validator_set;
+
+    #[runtime::pallet_index(8)]
+    pub type Session = pallet_session;
 }
 
 // Re-export types for node (add at end of file, after construct_runtime)
