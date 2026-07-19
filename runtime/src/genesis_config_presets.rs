@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    AccountId, Balance, BalancesConfig, RuntimeGenesisConfig, SessionKeys, SudoConfig, UNIT,
+    AccountId, Balance, BalancesConfig, CouncilConfig, RuntimeGenesisConfig, SessionKeys,
+    SudoConfig, UNIT,
 };
 use alloc::{vec, vec::Vec};
 use serde_json::Value;
@@ -25,7 +26,9 @@ fn account_id_from_ss58(s: &str) -> AccountId {
 /// `pallet-session` owns the live authority set and populates both Aura and GRANDPA from the
 /// `session` genesis keys below, at the first session boundary. `validator_set` seeds our own
 /// `pallet-validator-set`, which is what `pallet-session` asks for the validator list going
-/// forward (see `pallet_session::SessionManager` impl in `pallets/validator-set`).
+/// forward (see `pallet_session::SessionManager` impl in `pallets/validator-set`). `council`
+/// (Phase 4a) seeds the same three validator accounts as the council's initial membership;
+/// `pallet_validator_set::Config::MembershipChanged` keeps the two lists in sync after genesis.
 fn build_genesis_config(
     validators: Vec<(AccountId, AuraId, GrandpaId)>,
     root: AccountId,
@@ -57,6 +60,14 @@ fn build_genesis_config(
         session: pallet_session::GenesisConfig {
             keys: session_keys,
             ..Default::default()
+        },
+        // The council's initial membership is the same three validator accounts (see
+        // `MembershipChanged` in `pallet_validator_set::Config`, which keeps the two in sync from
+        // here on). `phantom` is the instance-marker field the multi-instance genesis struct
+        // carries; it always serializes away and is filled with `Default::default()`.
+        council: CouncilConfig {
+            members: initial_validators.clone(),
+            phantom: Default::default(),
         },
         validator_set: pallet_validator_set::GenesisConfig { initial_validators },
         sudo: SudoConfig { key: Some(root) },

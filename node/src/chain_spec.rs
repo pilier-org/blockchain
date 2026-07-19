@@ -39,7 +39,10 @@ fn validator_keys_from_seed(s: &str) -> (AccountId, AuraId, GrandpaId) {
 /// `aura` and `grandpa` genesis authorities are deliberately left empty: since Phase 2,
 /// `pallet-session` owns the live authority set and populates both Aura and GRANDPA from the
 /// `session` genesis keys below, at the first session boundary. `validatorSet` seeds our own
-/// `pallet-validator-set`. The full documented treasury layout (see
+/// `pallet-validator-set`. `council` seeds the same accounts as the validators' council (Phase
+/// 4a): `pallet-collective` compiles fine with an empty member list, so this section is required
+/// here even though the compiler cannot catch a forgotten one — an empty council would silently
+/// leave council voting broken on `dev`/`local`. The full documented treasury layout (see
 /// `runtime/src/genesis_config_presets.rs`) is not repeated here — the existing dev/local test
 /// endowment is kept as-is.
 fn testnet_genesis(
@@ -80,6 +83,9 @@ fn testnet_genesis(
         },
         "validatorSet": {
             "initialValidators": initial_validators,
+        },
+        "council": {
+            "members": initial_validators,
         },
         "sudo": { "key": Some(root_key) },
     })

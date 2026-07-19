@@ -23,10 +23,14 @@ use crate::MICRO_UNIT;
 
 // Local module imports from lib.rs
 use super::{
-    AccountId, Aura, Balance, Balances, Block, BlockNumber, EXISTENTIAL_DEPOSIT, Hash, Nonce,
-    Runtime, RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin,
-    RuntimeTask, SLOT_DURATION, SessionKeys, System, VERSION, ValidatorSet,
+    AccountId, Aura, Balance, Balances, Block, BlockNumber, Council, EXISTENTIAL_DEPOSIT, Hash,
+    Nonce, Runtime, RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason,
+    RuntimeOrigin, RuntimeTask, SLOT_DURATION, SessionKeys, System, VERSION, ValidatorSet,
 };
+
+/// The council's `pallet-collective` instance. A type alias only — `pallet_collective::Instance1`
+/// is used directly, there being exactly one collective in this runtime for now.
+type CouncilCollective = pallet_collective::Instance1;
 
 /// We allow for 75% of the block to be occupied by Normal transactions.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
@@ -146,15 +150,65 @@ impl pallet_session::Config for Runtime {
     type KeyDeposit = ();
 }
 
-/// Validator-set configuration for Testnet Phase 1: the set is fixed to whatever genesis (or
-/// root/Sudo) says it is. `AddRemoveOrigin = EnsureRoot` is a placeholder — Phase 4 of the
-/// mutable-validator-set plan replaces it with "council supermajority, or root as an emergency
-/// lever" once `pallet-collective` is wired in. `MembershipChanged = ()` is likewise a
-/// placeholder until the council exists to be kept in sync.
+parameter_types! {
+    /// How long a council motion stays open for voting before it lapses unresolved. 50 blocks is
+    /// ~5 minutes at the chain's 6-second block time — short enough to demonstrate a vote to
+    /// completion quickly on a testnet.
+    pub const CouncilMotionDuration: BlockNumber = 50;
+    /// How many motions can be in flight at once. 64 is generous headroom for a small validator
+    /// council that is not expected to propose more than a handful of changes at a time.
+    pub const CouncilMaxProposals: u32 = 64;
+    /// Upper bound on council size used for weight estimation, not an enforced cap on today's
+    /// three-validator council. 100 leaves plenty of room to grow the validator set.
+    pub const CouncilMaxMembers: u32 = 100;
+    /// The heaviest call a council motion may propose: up to half of a block's total weight,
+    /// mirroring the polkadot-sdk `node-template` reference (`MaxCollectivesProposalWeight`).
+    pub CouncilMaxProposalWeight: Weight = Perbill::from_percent(50) * RuntimeBlockWeights::get().max_block;
+}
+
+/// The validators' council: a `pallet-collective` instance whose members are the sovereign
+/// accounts of the current validator set (kept in sync via `MembershipChanged` below). It votes
+/// on `pallet_validator_set` calls to add or remove a validator; a proposal must clear the 75%
+/// threshold wired into `AddRemoveOrigin` there to take effect. `DefaultVote =
+/// PrimeDefaultVote` means an abstaining member's vote defaults to the prime member's vote if a
+/// prime is set, and to "no" otherwise — the standard FRAME choice, and there is no prime-setting
+/// UI in this plan, so it behaves like a plain "no" default for now. `Consideration = ()` charges
+/// no deposit for submitting a proposal: this council has no open membership to spam, so the
+/// anti-spam deposit machinery is unnecessary.
+impl pallet_collective::Config<CouncilCollective> for Runtime {
+    type RuntimeOrigin = RuntimeOrigin;
+    type Proposal = RuntimeCall;
+    type RuntimeEvent = RuntimeEvent;
+    type MotionDuration = CouncilMotionDuration;
+    type MaxProposals = CouncilMaxProposals;
+    type MaxMembers = CouncilMaxMembers;
+    type DefaultVote = pallet_collective::PrimeDefaultVote;
+    type WeightInfo = ();
+    // Membership is driven by the validator set (see `MembershipChanged` below), not set directly;
+    // root retains an emergency override to fix the council's membership by hand if it ever
+    // desyncs from `ValidatorSet`.
+    type SetMembersOrigin = frame_system::EnsureRoot<AccountId>;
+    type MaxProposalWeight = CouncilMaxProposalWeight;
+    type DisapproveOrigin = frame_system::EnsureRoot<AccountId>;
+    type KillOrigin = frame_system::EnsureRoot<AccountId>;
+    type Consideration = ();
+}
+
+/// Validator-set configuration. `AddRemoveOrigin` allows either root (Sudo, an emergency lever)
+/// or a council supermajority of at least 75% (`EnsureProportionAtLeast<.., 3, 4>`) to add or
+/// remove a validator — this is the "council supermajority, or root as an emergency lever" design
+/// from Phase 4 of the mutable-validator-set plan, and the 3/4 threshold matches the 75% approval
+/// documented publicly. `MembershipChanged = Council` keeps the council's member list in lock-step
+/// with the validator set: whenever `pallet_validator_set` adds or removes a validator, it calls
+/// `Council::change_members_sorted(..)` so the same accounts that hold validator seats also hold
+/// council votes.
 impl pallet_validator_set::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type AddRemoveOrigin = frame_system::EnsureRoot<AccountId>;
-    type MembershipChanged = ();
+    type AddRemoveOrigin = frame_support::traits::EitherOfDiverse<
+        frame_system::EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>,
+    >;
+    type MembershipChanged = Council;
     type MinValidators = ConstU32<1>;
     type WeightInfo = ();
 }

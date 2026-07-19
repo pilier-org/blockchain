@@ -26,6 +26,9 @@ pub use sp_runtime::BuildStorage;
 
 pub mod genesis_config_presets;
 
+#[cfg(test)]
+mod tests;
+
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime.
 pub mod opaque {
@@ -139,6 +142,8 @@ pub type Executive = frame_executive::Executive<
 
 #[frame_support::runtime]
 mod runtime {
+    use frame_support::instances::Instance1;
+
     #[runtime::runtime]
     #[runtime::derive(
         RuntimeCall,
@@ -187,6 +192,13 @@ mod runtime {
 
     #[runtime::pallet_index(8)]
     pub type Session = pallet_session;
+
+    // The validators' council: an instance of `pallet-collective` whose members are kept in sync
+    // with the live validator set (see `MembershipChanged` in `pallet_validator_set::Config`).
+    // Its genesis only seeds a member list, so — unlike `ValidatorSet`/`Session` above — it has no
+    // ordering dependency on any other pallet's genesis build; index 9 (after Session) is safe.
+    #[runtime::pallet_index(9)]
+    pub type Council = pallet_collective::Pallet<Runtime, Instance1>;
 }
 
 // Re-export types for node (add at end of file, after construct_runtime)
