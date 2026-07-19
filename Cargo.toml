@@ -45,6 +45,7 @@ frame-metadata-hash-extension = { git = "https://github.com/paritytech/polkadot-
 pallet-aura = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-grandpa = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+pallet-session = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-sudo = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-timestamp = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-transaction-payment = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
