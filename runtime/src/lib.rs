@@ -173,6 +173,12 @@ mod runtime {
 
     #[runtime::pallet_index(6)]
     pub type Sudo = pallet_sudo;
+
+    #[runtime::pallet_index(7)]
+    pub type Session = pallet_session;
+
+    #[runtime::pallet_index(9)]
+    pub type ValidatorSet = pallet_validator_set;
 }
 
 // Re-export types for node (add at end of file, after construct_runtime)

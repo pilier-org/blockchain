@@ -25,7 +25,7 @@ use crate::MICRO_UNIT;
 use super::{
     AccountId, Aura, Balance, Balances, Block, BlockNumber, EXISTENTIAL_DEPOSIT, Hash, Nonce,
     Runtime, RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin,
-    RuntimeTask, SLOT_DURATION, System, VERSION,
+    RuntimeTask, SLOT_DURATION, SessionKeys, System, VERSION, ValidatorSet,
 };
 
 /// We allow for 75% of the block to be occupied by Normal transactions.
@@ -96,9 +96,67 @@ impl pallet_grandpa::Config for Runtime {
     type WeightInfo = ();
     type MaxAuthorities = ConstU32<32>;
     type MaxNominators = ConstU32<0>;
-    type MaxSetIdSessionEntries = ConstU64<0>;
+    // Now that `pallet-session` rotates sessions, GRANDPA needs to remember more than zero past
+    // set IDs so that equivocation/finality-proof lookups spanning a session boundary still find
+    // the authority set they refer to. 168 is a generous, testnet-appropriate cushion (a week's
+    // worth of sessions at `Period = 100` blocks / ~10 minutes per session).
+    type MaxSetIdSessionEntries = ConstU64<168>;
     type KeyOwnerProof = sp_core::Void;
     type EquivocationReportSystem = ();
+}
+
+parameter_types! {
+    /// How many blocks a session lasts. ~10 minutes at the chain's 6-second block time — short
+    /// enough to demonstrate a validator-set change quickly on a testnet, long enough not to spam
+    /// logs with constant session rotation. See the plan's cost note for the alternatives
+    /// considered (10 blocks vs. 600 blocks).
+    pub const Period: BlockNumber = 100;
+    pub const Offset: BlockNumber = 0;
+}
+
+/// Identity conversion from a validator's sovereign `AccountId` to its `ValidatorId`. Pilier does
+/// not distinguish a "stash" account from a "controller" account the way `pallet-staking` does,
+/// so the two ID types are the same and this conversion always succeeds.
+pub struct ValidatorIdOf;
+impl sp_runtime::traits::Convert<AccountId, Option<AccountId>> for ValidatorIdOf {
+    fn convert(a: AccountId) -> Option<AccountId> {
+        Some(a)
+    }
+}
+
+/// Session configuration: stores each validator's session keys and, on every session boundary,
+/// asks `ValidatorSet` (our own pallet) who the next session's validators should be, then hands
+/// that list to Aura and GRANDPA via `SessionHandler`.
+impl pallet_session::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type ValidatorId = AccountId;
+    type ValidatorIdOf = ValidatorIdOf;
+    type ShouldEndSession = pallet_session::PeriodicSessions<Period, Offset>;
+    type NextSessionRotation = pallet_session::PeriodicSessions<Period, Offset>;
+    type SessionManager = ValidatorSet;
+    type SessionHandler = <SessionKeys as sp_runtime::traits::OpaqueKeys>::KeyTypeIdProviders;
+    type Keys = SessionKeys;
+    // `()` disables validator disabling on equivocation/misbehaviour reports for now; this is a
+    // testnet-phase PoA chain with no staking/slashing wired up yet.
+    type DisablingStrategy = ();
+    type WeightInfo = ();
+    // Session keys can be held with a deposit to discourage spam; on this fixed, admin/council
+    // controlled validator set there is no open registration to spam, so the deposit is zero.
+    type Currency = Balances;
+    type KeyDeposit = ();
+}
+
+/// Validator-set configuration for Testnet Phase 1: the set is fixed to whatever genesis (or
+/// root/Sudo) says it is. `AddRemoveOrigin = EnsureRoot` is a placeholder — Phase 4 of the
+/// mutable-validator-set plan replaces it with "council supermajority, or root as an emergency
+/// lever" once `pallet-collective` is wired in. `MembershipChanged = ()` is likewise a
+/// placeholder until the council exists to be kept in sync.
+impl pallet_validator_set::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type AddRemoveOrigin = frame_system::EnsureRoot<AccountId>;
+    type MembershipChanged = ();
+    type MinValidators = ConstU32<1>;
+    type WeightInfo = ();
 }
 
 /// Timestamp configuration. Minimum period is half of the slot duration.

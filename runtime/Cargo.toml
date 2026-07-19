@@ -28,10 +28,13 @@ frame-metadata-hash-extension.workspace = true
 # Паллеты (Только то, что нужно для Pilier PoA)
 pallet-aura.workspace = true
 pallet-balances.workspace = true
+pallet-collective.workspace = true
 pallet-grandpa.workspace = true
+pallet-session.workspace = true
 pallet-sudo.workspace = true
 pallet-timestamp.workspace = true
 pallet-transaction-payment.workspace = true
+pallet-validator-set = { path = "../pallets/validator-set", default-features = false }
 
 # Примитивы (sp-*)
 sp-api.workspace = true
@@ -69,11 +72,14 @@ std = [
   "frame-system/std",
   "pallet-aura/std",
   "pallet-balances/std",
+  "pallet-collective/std",
   "pallet-grandpa/std",
+  "pallet-session/std",
   "pallet-sudo/std",
   "pallet-timestamp/std",
   "pallet-transaction-payment-rpc-runtime-api/std",
   "pallet-transaction-payment/std",
+  "pallet-validator-set/std",
   "scale-info/std",
   "serde_json/std",
   "sp-api/std",
@@ -103,9 +109,12 @@ runtime-benchmarks = [
 	"frame-support/runtime-benchmarks",
 	"frame-system/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
+	"pallet-collective/runtime-benchmarks",
+	"pallet-session/runtime-benchmarks",
 	"pallet-timestamp/runtime-benchmarks",
 	"pallet-sudo/runtime-benchmarks",
 	"pallet-transaction-payment/runtime-benchmarks",
+	"pallet-validator-set/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
 ]
 
@@ -116,9 +125,12 @@ try-runtime = [
 	"frame-system/try-runtime",
 	"pallet-aura/try-runtime",
 	"pallet-balances/try-runtime",
+	"pallet-collective/try-runtime",
 	"pallet-grandpa/try-runtime",
+	"pallet-session/try-runtime",
 	"pallet-sudo/try-runtime",
 	"pallet-timestamp/try-runtime",
 	"pallet-transaction-payment/try-runtime",
+	"pallet-validator-set/try-runtime",
 	"sp-runtime/try-runtime",
 ]
