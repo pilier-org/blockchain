@@ -494,7 +494,16 @@ DPP; удаление Sudo; полноценный бенчмаркинг вес
   `MinValidators`); root через реальный `Sudo::sudo`; отклонение постороннего и члена-совета-напрямую.
   Проверено независимым прогоном Opus: `cargo test -p pilier-runtime` = 6/6 зелёных. Cargo.toml не
   трогался (все нужные крейты уже были зависимостями рантайма).
-- [ ] Фаза 5 — версия 102, сверка стоимости, пересборка чейнспека
+- [x] Фаза 5 — версия 102, сверка стоимости, пересборка чейнспека. DONE. `spec_version`
+  101 → 102 (одна строка в `runtime/src/lib.rs`); дифф `runtime/src/configs/mod.rs` пуст — блок
+  комиссии (`WeightToFee`/`WeightToFeePolynomial`, `TransactionByteFee`/`FeeMultiplier`,
+  `impl pallet_transaction_payment::Config` с `OnChargeTransaction = FungibleAdapter<Balances, ()>`)
+  и константы стоимости (`UNIT`/`MILLI_UNIT`/`MICRO_UNIT`/`EXISTENTIAL_DEPOSIT`) не тронуты. Оба
+  чейнспека пересобраны через `build-spec` (`pilier-testnet-raw.json`, `pilier-testnet.json`).
+  Нода на `--dev` авторит блоки (`Imported #1→#2→#3`) — весь новый рантайм работает end-to-end;
+  на новом сыром чейнспете тестнета стартует чисто, без паники genesis-authorities (блоки не пишет,
+  т.к. нет ключей валидаторов тестнета — ожидаемо). Проверено независимым диффом Opus. Смысл номеров
+  версий записан в `ai/decisions/spec-version-log.md`. Изменения НЕ закоммичены (ждут ревью Алекса).
 - [ ] Фаза 6 — показательный forkless-апгрейд (рунбук)
 
 ---

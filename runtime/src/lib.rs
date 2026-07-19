@@ -63,7 +63,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: alloc::borrow::Cow::Borrowed("pilier-runtime"),
     impl_name: alloc::borrow::Cow::Borrowed("pilier-runtime"),
     authoring_version: 1,
-    spec_version: 101,
+    spec_version: 102,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     transaction_version: 1,
