@@ -65,3 +65,9 @@ Thumbs.db
 # Local dev
 /tmp/
 node_modules/
+
+# Internal AI working files (plans, decision logs) live in the project's separate
+# PRIVATE repo, not in this public one. Keep them out of version control here.
+ai/
+# Local, private Claude guidance (imports from the private repo); never commit it here.
+CLAUDE.local.md

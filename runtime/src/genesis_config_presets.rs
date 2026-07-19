@@ -79,9 +79,8 @@ fn build_genesis_config(
 
 // Only testnet preset в runtime
 //
-// Treasury layout below follows the public tokenomics table
-// (`governance/tokenomics.md`, ai/plans/runtime-mutable-validator-set.md section 3), sums to
-// exactly 4_000_000 PIL. Old variable names (pre-Phase-3) are noted in comments since several
+// Treasury layout below follows the project's tokenomics table and sums to exactly
+// 4_000_000 PIL. Old variable names (pre-Phase-3) are noted in comments since several
 // addresses are reused for different pools than before.
 pub fn pilier_testnet_config_genesis() -> Value {
     let sudo_key = account_id_from_ss58("5FEjCCNshkU2ptLe943S5KxGXrtXVbbXVBZJzotBD5TGdnFC");

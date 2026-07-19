@@ -25,6 +25,15 @@ Two facts about the code are easy to get wrong, so keep them in mind:
   line in the benchmark list. Treat it as example code to copy from when writing a real pallet,
   not as live behaviour.
 
+## Internal planning and decisions live in a separate private repository
+
+This repository is public and holds the chain's code plus a public `CHANGELOG.md` (keyed by
+runtime `spec_version`, describing what changed and why for operators). The project's internal
+working notes — development plans, the decision log with full rationale, operations runbooks, and
+internal knowledge about the code — live in a **separate private repository**, not here. Do not
+add internal planning or decision documents to this public repo; record public-facing "what
+changed and why" in `CHANGELOG.md` instead.
+
 ## Workspace layout
 
 This is a Cargo workspace (see the root `Cargo.toml`) with three kinds of member:

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Pilier Team.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Integration tests for Phase 4b of `ai/plans/runtime-mutable-validator-set.md`: proving that
+//! Integration tests for the mutable-validator-set work (Phase 4b): proving that
 //! the *composed* runtime — `pallet-validator-set`, `pallet-session` and the validators' council
 //! (`pallet-collective`, instance `Council`) wired together in `runtime/src/configs/mod.rs` —
 //! actually behaves the way Phase 4a's wiring claims, not merely that it compiles.

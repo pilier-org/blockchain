@@ -186,7 +186,8 @@ mod runtime {
     // `ValidatorSet` MUST have a lower index than `Session`, so its `Validators` storage is
     // already seeded when `Session` reads it. If `Session` built first, it would receive an empty
     // set, leaving the genesis authorities empty and panicking the node's consensus bootstrap
-    // ("genesis authorities is non-empty"). See ai/decisions/genesis-build-order.md.
+    // ("genesis authorities is non-empty"). The full rationale is recorded in the project's
+    // internal decision log.
     #[runtime::pallet_index(7)]
     pub type ValidatorSet = pallet_validator_set;
 
@@ -199,6 +200,12 @@ mod runtime {
     // ordering dependency on any other pallet's genesis build; index 9 (after Session) is safe.
     #[runtime::pallet_index(9)]
     pub type Council = pallet_collective::Pallet<Runtime, Instance1>;
+
+    // `pallet-authorship` has no genesis state (no `#[pallet::genesis_config]`), so — like
+    // `Council` above — it carries no genesis-build ordering dependency on any other pallet;
+    // index 10 (after Council) is safe.
+    #[runtime::pallet_index(10)]
+    pub type Authorship = pallet_authorship;
 }
 
 // Re-export types for node (add at end of file, after construct_runtime)

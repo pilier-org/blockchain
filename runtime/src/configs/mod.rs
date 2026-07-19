@@ -7,7 +7,10 @@ use alloc::vec;
 // Substrate and Polkadot dependencies
 use frame_support::{
     parameter_types,
-    traits::{ConstBool, ConstU8, ConstU32, ConstU64, ConstU128, VariantCountOf},
+    traits::{
+        ConstBool, ConstU8, ConstU32, ConstU64, ConstU128, Imbalance, OnUnbalanced, VariantCountOf,
+        fungible::{Balanced, Credit},
+    },
     weights::{
         ConstantMultiplier, Weight, WeightToFeeCoefficients, WeightToFeePolynomial,
         constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND},
@@ -150,6 +153,18 @@ impl pallet_session::Config for Runtime {
     type KeyDeposit = ();
 }
 
+/// Authorship configuration: recovers the `AccountId` of whoever produced the current block.
+/// `FindAuthor` chains two steps — Aura's `FindAuthor<u32>` reads the authority index out of the
+/// block's pre-runtime digest, and `pallet_session::FindAccountFromAuthorIndex` turns that index
+/// into the matching account by looking it up in `Session::validators()`. The result is exposed
+/// as `Authorship::author()` and consumed below by `ToAuthor` to route the transaction fee to the
+/// block's producer. `EventHandler = ()` — nothing else in this runtime needs to be notified of
+/// the author on every block.
+impl pallet_authorship::Config for Runtime {
+    type FindAuthor = pallet_session::FindAccountFromAuthorIndex<Self, Aura>;
+    type EventHandler = ();
+}
+
 parameter_types! {
     /// How long a council motion stays open for voting before it lapses unresolved. 50 blocks is
     /// ~5 minutes at the chain's 6-second block time — short enough to demonstrate a vote to
@@ -265,10 +280,45 @@ impl WeightToFeePolynomial for WeightToFee {
     }
 }
 
+/// Routes 100% of the transaction fee to whoever produced the current block, replacing the
+/// previous behaviour of `FungibleAdapter<Balances, ()>`, which simply burned it.
+/// `Authorship::author()` (see `pallet_authorship::Config` above) recovers the author's
+/// `AccountId`; the withdrawn fee, a fungible `Credit<AccountId, Balances>`, is then deposited
+/// into that account's free balance via `Balanced::resolve`.
+///
+/// Two rare edge cases can still burn the fee instead of paying it out — see the plan's
+/// documented crash case: `resolve` fails (for example the amount is below the existential
+/// deposit and the account does not already exist), or no author could be found at all. Either
+/// way the credit is simply dropped, which is what triggers the burn; a `log::warn!` records it
+/// as a cheap, greppable signal in the node's log so the almost-never-happens case is still
+/// visible.
+pub struct ToAuthor;
+impl OnUnbalanced<Credit<AccountId, Balances>> for ToAuthor {
+    fn on_nonzero_unbalanced(amount: Credit<AccountId, Balances>) {
+        if let Some(author) = pallet_authorship::Pallet::<Runtime>::author() {
+            if let Err(not_resolved) = <Balances as Balanced<AccountId>>::resolve(&author, amount) {
+                log::warn!(
+                    target: "runtime::fee",
+                    "fee of {:?} could not be resolved to block author {:?} (e.g. below the \
+                     existential deposit) — burned instead of paid to the author",
+                    not_resolved.peek(),
+                    author,
+                );
+            }
+        } else {
+            log::warn!(
+                target: "runtime::fee",
+                "fee of {:?} burned: no block author found",
+                amount.peek(),
+            );
+        }
+    }
+}
+
 /// Transaction payment configuration.
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type OnChargeTransaction = FungibleAdapter<Balances, ()>;
+    type OnChargeTransaction = FungibleAdapter<Balances, ToAuthor>;
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = WeightToFee;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;

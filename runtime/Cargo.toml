@@ -27,6 +27,7 @@ frame-metadata-hash-extension.workspace = true
 
 # Паллеты (Только то, что нужно для Pilier PoA)
 pallet-aura.workspace = true
+pallet-authorship.workspace = true
 pallet-balances.workspace = true
 pallet-collective.workspace = true
 pallet-grandpa.workspace = true
@@ -35,6 +36,9 @@ pallet-sudo.workspace = true
 pallet-timestamp.workspace = true
 pallet-transaction-payment.workspace = true
 pallet-validator-set = { path = "../pallets/validator-set", default-features = false }
+
+# Журналирование крайних случаев (например, сгорание комиссии в `ToAuthor`)
+log.workspace = true
 
 # Примитивы (sp-*)
 sp-api.workspace = true
@@ -70,7 +74,9 @@ std = [
   "frame-support/std",
   "frame-system-rpc-runtime-api/std",
   "frame-system/std",
+  "log/std",
   "pallet-aura/std",
+  "pallet-authorship/std",
   "pallet-balances/std",
   "pallet-collective/std",
   "pallet-grandpa/std",
