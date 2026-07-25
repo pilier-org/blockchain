@@ -1,6 +1,6 @@
 # Agent instructions for Pilier
 
-Compact orientation for OpenCode sessions. For the full project story, read `CLAUDE.md` first; for the reasoning behind specific decisions, read `ai/decisions/*.md`.
+Compact orientation for OpenCode sessions. For the full project story, read `CLAUDE.md` first; for internal rationale behind specific decisions, see the private knowledge base linked under "Authoritative context" below.
 
 ## Do not trust the root README
 
@@ -35,8 +35,9 @@ Live pallets and their fixed indices in `runtime/src/lib.rs`:
 | 7 | **ValidatorSet** |
 | 8 | **Session** |
 | 9 | Council (`pallet-collective` Instance1) |
+| 10 | Authorship |
 
-**Ordering constraint:** `ValidatorSet` must have a lower pallet index than `Session`. FRAME builds genesis by ascending index, and `Session` reads `ValidatorSet::Validators` during its genesis build. If `Session` is indexed lower, genesis authorities become empty and the node panics on startup (`genesis authorities is non-empty`). See `ai/decisions/genesis-build-order.md`.
+**Ordering constraint:** `ValidatorSet` must have a lower pallet index than `Session`. FRAME builds genesis by ascending index, and `Session` reads `ValidatorSet::Validators` during its genesis build. If `Session` is indexed lower, genesis authorities become empty and the node panics on startup (`genesis authorities is non-empty`).
 
 **Never renumber an existing pallet; only append new indices.** Pallet indices are part of the chain's wire format.
 
@@ -126,9 +127,9 @@ If genesis changes, regenerate the raw chain specs at the repo root so nodes agr
 
 ## Runtime versioning
 
-- `spec_version` lives in `runtime/src/lib.rs` inside the `VERSION` block. Bump it on any runtime change.
+- `spec_version` lives in `runtime/src/lib.rs` inside the `VERSION` block (currently `102`). Bump it on any runtime change.
 - It is append-only / monotonically increasing. Never decrease it, even when rebuilding genesis from scratch.
-- The changelog of version numbers is in `ai/decisions/spec-version-log.md`.
+- The public changelog of what changed per `spec_version` is `CHANGELOG.md` at the repo root. Internal rationale lives in the project's private knowledge base (see "Authoritative context" below), not in this public repo.
 
 ## Deployment
 
@@ -142,6 +143,6 @@ Exposed ports: `30333` (p2p), `9944` (RPC), `9615` (Prometheus).
 
 - `/Users/laptop/Dev/pilier/devops` — the shared project knowledge base (Obsidian vault), including plans, decisions, and operational context for the broader Pilier project.
 - `CLAUDE.md` — full project orientation, command reference, and conventions.
-- `ai/decisions/genesis-build-order.md` — why `ValidatorSet` must precede `Session`.
-- `ai/decisions/spec-version-log.md` — the meaning of each `spec_version` bump.
-- `ai/plans/runtime-mutable-validator-set.md` — the plan that introduced `ValidatorSet`, `Session`, and the validator council.
+- `CHANGELOG.md` — the public record of what changed per runtime `spec_version`.
+
+Internal planning (`ai/decisions`, `ai/plans`) was removed from this public repo and now lives only in the private knowledge base above; do not re-add internal documents here.

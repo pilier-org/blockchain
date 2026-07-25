@@ -45,20 +45,22 @@ This is a Cargo workspace (see the root `Cargo.toml`) with three kinds of member
   function": the actual on-chain logic that validates blocks and applies their changes. It is
   compiled both to native code and to WebAssembly, and the WebAssembly copy is what the chain
   upgrades when the logic changes.
-- `pallets/*` — individual FRAME modules ("pallets"). Currently only `pallets/template`, which,
-  as noted above, is not wired in.
+- `pallets/*` — individual FRAME modules ("pallets"). Two members: `pallets/validator-set`
+  (live — owns the mutable validator set, feeds `pallet-session`), and `pallets/template`
+  (a scaffold that compiles but, as noted above, is not wired into the runtime).
 
 ### How the runtime is assembled
 
 The runtime is defined across a few files, and understanding the split saves time:
 
 - `runtime/src/lib.rs` declares the chain's core types (account, balance, block, signature),
-  the runtime version block (`spec_version`, currently 101 — bump this on any runtime change),
+  the runtime version block (`spec_version`, currently 102 — bump this on any runtime change),
   the block time (6 seconds), the token constants (`UNIT = 1_000_000`, meaning one PIL is a
   million of the smallest unit), and the list of pallets with their fixed indices, inside the
   `#[frame_support::runtime]` block. The pallets included are: System, Timestamp, Aura,
-  Grandpa, Balances, TransactionPayment, and Sudo. **Pallet indices are part of the chain's
-  wire format — never renumber an existing pallet; only append new ones.**
+  Grandpa, Balances, TransactionPayment, Sudo, ValidatorSet, Session, Council (a
+  `pallet-collective` instance), and Authorship. **Pallet indices are part of the chain's wire
+  format — never renumber an existing pallet; only append new ones.**
 - `runtime/src/configs/mod.rs` holds the `impl ... Config for Runtime` block for every pallet.
   This is where each pallet is parameterised: block weights and length limits, the existential
   deposit, the fee formula (`WeightToFee`), the consensus authority limits, and so on.
@@ -68,11 +70,14 @@ The runtime is defined across a few files, and understanding the split saves tim
 ### Consensus and administration
 
 Block *authoring* uses **Aura** (authorities take turns producing blocks on a schedule); block
-*finality* uses **GRANDPA** (authorities vote to finalise). Both authority sets are seeded at
-genesis and, in this Proof-of-Authority design, are not opened to public staking. The **Sudo**
-pallet gives one privileged "root" key administrative control; the code comments describe this
-as intended for Testnet Phase 1, so expect it to be removed or replaced before a production
-launch. The wiring of these engines into the node lives in `node/src/service.rs`.
+*finality* uses **GRANDPA** (authorities vote to finalise). The authority sets are seeded at
+genesis and then kept mutable on the live chain: `pallet-validator-set` owns the set and feeds
+it to `pallet-session`, which in turn seeds Aura and GRANDPA. The set is changed by a
+supermajority (≥75%) vote of the validators' council (`pallet-collective`, instance 1), with the
+**Sudo** root key retained as an emergency override. This is a Proof-of-Authority design, not
+open public staking. The code comments describe Sudo as intended for Testnet Phase 1, so expect
+it to be removed or replaced before a production launch. The wiring of these engines into the
+node lives in `node/src/service.rs`.
 
 ## Chains and genesis
 
