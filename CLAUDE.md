@@ -191,8 +191,7 @@ follows these rules.
 - **The body explains why, not what.** The diff already says what changed. The body says what
   was wrong before, what the change does about it, and what it deliberately leaves alone. End it
   with the test evidence, e.g. `cargo test --workspace: 57 passed, 0 failed.`
-- **No tool attribution.** No `Co-Authored-By` trailer naming a tool or an assistant, no session
-  link, no "generated with" line.
-- **No internal references.** No task or card identifiers, no step numbers, no references to
-  planning documents, no absolute filesystem paths, and nothing that names the project's private
-  repository. The same rule applies to source comments, test names and assertion messages.
+- **Nothing that belongs only on the private side of this project.** The same rule applies to
+  source comments, test names and assertion messages, not only commit messages. A pre-commit and
+  a pre-push hook enforce this once this repository's `core.hooksPath` is set up; the exact list
+  of what they reject lives with that tooling, not here.
