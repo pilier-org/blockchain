@@ -4,6 +4,12 @@ All notable changes to the Pilier runtime, keyed by runtime `spec_version`. This
 spirit of [Keep a Changelog](https://keepachangelog.com). It records what changed and why for
 node operators and integrators; it deliberately omits internal implementation and decision detail.
 
+## Runtime rollout
+
+Before any runtime upgrade is deployed, the WebAssembly file being rolled out is checked against
+the fingerprint the continuous-integration run published for the same commit, using
+`scripts/verify-runtime-fingerprint.sh`.
+
 ## [runtime 102] — 2026-07-19
 
 ### Added
