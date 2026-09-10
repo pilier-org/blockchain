@@ -179,3 +179,20 @@ Validator operators are expected to run the node in Docker, not from a local bui
   generate validator keys with `pilier-node key generate`.
 - `deployment/.env.example` — the template for that `.env`.
 - `ops/testnet/Dockerfile` — a separate operations image for the testnet.
+
+## Commit conventions
+
+This repository is public, and its history is part of what it shows. Every commit message
+follows these rules.
+
+- **Conventional Commits, in English.** `type(scope): imperative summary`, with the types this
+  project uses being `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `build` and `ci`. The
+  scope is the pallet or the area — `dpp`, `registry`, `runtime`, `node`, `deployment`.
+- **The body explains why, not what.** The diff already says what changed. The body says what
+  was wrong before, what the change does about it, and what it deliberately leaves alone. End it
+  with the test evidence, e.g. `cargo test --workspace: 57 passed, 0 failed.`
+- **No tool attribution.** No `Co-Authored-By` trailer naming a tool or an assistant, no session
+  link, no "generated with" line.
+- **No internal references.** No task or card identifiers, no step numbers, no references to
+  planning documents, no absolute filesystem paths, and nothing that names the project's private
+  repository. The same rule applies to source comments, test names and assertion messages.

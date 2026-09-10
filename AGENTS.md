@@ -1,6 +1,6 @@
 # Agent instructions for Pilier
 
-Compact orientation for OpenCode sessions. For the full project story, read `CLAUDE.md` first; for internal rationale behind specific decisions, see the private knowledge base linked under "Authoritative context" below.
+Compact orientation for OpenCode sessions. For the full project story, read `CLAUDE.md` first.
 
 ## Do not trust the root README
 
@@ -129,7 +129,7 @@ If genesis changes, regenerate the raw chain specs at the repo root so nodes agr
 
 - `spec_version` lives in `runtime/src/lib.rs` inside the `VERSION` block (currently `102`). Bump it on any runtime change.
 - It is append-only / monotonically increasing. Never decrease it, even when rebuilding genesis from scratch.
-- The public changelog of what changed per `spec_version` is `CHANGELOG.md` at the repo root. Internal rationale lives in the project's private knowledge base (see "Authoritative context" below), not in this public repo.
+- The public changelog of what changed per `spec_version` is `CHANGELOG.md` at the repo root.
 
 ## Deployment
 
@@ -141,8 +141,7 @@ Exposed ports: `30333` (p2p), `9944` (RPC), `9615` (Prometheus).
 
 ## Authoritative context
 
-- `/Users/laptop/Dev/pilier/devops` — the shared project knowledge base (Obsidian vault), including plans, decisions, and operational context for the broader Pilier project.
 - `CLAUDE.md` — full project orientation, command reference, and conventions.
 - `CHANGELOG.md` — the public record of what changed per runtime `spec_version`.
 
-Internal planning (`ai/decisions`, `ai/plans`) was removed from this public repo and now lives only in the private knowledge base above; do not re-add internal documents here.
+This repository carries code, the public changelog and operator documentation. Internal planning and decision documents do not belong here; `ai/` is ignored for that reason.
