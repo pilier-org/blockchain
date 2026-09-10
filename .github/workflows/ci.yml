@@ -30,9 +30,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang libssl-dev llvm libudev-dev protobuf-compiler pkg-config
 
+      - name: Read the pinned toolchain version
+        id: toolchain
+        run: |
+          channel=$(sed -n 's/^channel[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' env-setup/rust-toolchain.toml)
+          if [ -z "$channel" ]; then
+            echo "env-setup/rust-toolchain.toml declares no channel" >&2
+            exit 1
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
       - name: Install the pinned Rust toolchain
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rustfmt, clippy, rust-src
           targets: wasm32-unknown-unknown, wasm32v1-none
 
@@ -43,9 +54,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ steps.toolchain.outputs.channel }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-${{ steps.toolchain.outputs.channel }}-
 
       - name: Format check
         run: cargo fmt --all -- --check
@@ -72,9 +83,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang libssl-dev llvm libudev-dev protobuf-compiler pkg-config
 
+      - name: Read the pinned toolchain version
+        id: toolchain
+        run: |
+          channel=$(sed -n 's/^channel[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' env-setup/rust-toolchain.toml)
+          if [ -z "$channel" ]; then
+            echo "env-setup/rust-toolchain.toml declares no channel" >&2
+            exit 1
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
       - name: Install the pinned Rust toolchain
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rust-src
           targets: wasm32-unknown-unknown, wasm32v1-none
 
@@ -85,9 +107,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-release-${{ steps.toolchain.outputs.channel }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-release-
+            ${{ runner.os }}-cargo-release-${{ steps.toolchain.outputs.channel }}-
 
       - name: Build the runtime WebAssembly blob
         run: cargo build --release -p pilier-runtime
