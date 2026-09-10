@@ -11,7 +11,7 @@ publish = false
 [dependencies]
 frame-try-runtime = { workspace = true, optional = true }
 
-# Сериализация (Base)
+# Serialization (Base)
 codec = { workspace = true }
 scale-info = { features = ["derive", "serde"], workspace = true }
 serde_json = { workspace = true, default-features = false, features = ["alloc"] }
@@ -19,13 +19,13 @@ serde_json = { workspace = true, default-features = false, features = ["alloc"] 
 frame-benchmarking = { workspace = true, optional = true } 
 frame-system-benchmarking = { workspace = true, optional = true }
 
-# Ядро FRAME
+# FRAME core
 frame-support = { features = ["experimental"], workspace = true }
 frame-system.workspace = true
 frame-executive.workspace = true
 frame-metadata-hash-extension.workspace = true
 
-# Паллеты (Только то, что нужно для Pilier PoA)
+# Pallets (only what Pilier's own Proof-of-Authority chain needs)
 pallet-aura.workspace = true
 pallet-authorship.workspace = true
 pallet-balances.workspace = true
@@ -37,10 +37,10 @@ pallet-timestamp.workspace = true
 pallet-transaction-payment.workspace = true
 pallet-validator-set = { path = "../pallets/validator-set", default-features = false }
 
-# Журналирование крайних случаев (например, сгорание комиссии в `ToAuthor`)
+# Logging for edge cases (e.g. a fee burned in `ToAuthor`)
 log.workspace = true
 
-# Примитивы (sp-*)
+# Primitives (sp-*)
 sp-api.workspace = true
 sp-block-builder.workspace = true
 sp-consensus-aura = { features = ["serde"], workspace = true }
@@ -106,7 +106,7 @@ std = [
   "frame-try-runtime?/std",
 ]
 
-# Включаем для генерации хэша метаданных (нужно для Ledger/Safe)
+# Enabled for metadata-hash generation (needed for Ledger/Safe)
 metadata-hash = ["substrate-wasm-builder/metadata-hash"]
 
 runtime-benchmarks = [

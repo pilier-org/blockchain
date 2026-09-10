@@ -14,7 +14,7 @@ repository = "https://github.com/pilier-org/blockchain"
 homepage = "https://pilier.org"
 
 [workspace.dependencies]
-# Локальные компоненты Pilier
+# Pilier's own local components
 pilier-runtime = { path = "runtime", default-features = false }
 
 # Core Infrastructure
