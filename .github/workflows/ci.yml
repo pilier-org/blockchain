@@ -50,3 +50,55 @@ jobs:
 
       - name: Test the workspace
         run: cargo test --workspace
+
+  runtime-wasm:
+    name: Runtime WebAssembly build
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libssl-dev llvm libudev-dev protobuf-compiler pkg-config
+
+      - name: Install the pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache the cargo registry and the release build output
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      - name: Build the runtime WebAssembly blob
+        run: cargo build --release -p pilier-runtime
+
+      - name: Locate the compact compressed blob and record its fingerprint
+        run: |
+          set -e
+          wasm_path=$(find target/release/wbuild -name '*.compact.compressed.wasm' | head -n1)
+          if [ -z "$wasm_path" ]; then
+            echo "no compact compressed runtime blob found under target/release/wbuild" >&2
+            exit 1
+          fi
+          mkdir -p runtime-artifact
+          cp "$wasm_path" runtime-artifact/runtime.compact.compressed.wasm
+          sha256sum runtime-artifact/runtime.compact.compressed.wasm \
+            | awk '{print $1}' > runtime-artifact/runtime.compact.compressed.wasm.sha256
+          cat runtime-artifact/runtime.compact.compressed.wasm.sha256
+
+      - name: Publish the runtime blob and its fingerprint
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime-wasm
+          path: runtime-artifact/
