@@ -158,9 +158,12 @@ cargo build --release --features runtime-benchmarks
 
 ## Toolchain
 
-Rust **edition 2024**, stable channel, with the `wasm32-unknown-unknown` target required for the
-WebAssembly runtime build. The exact toolchain and components are pinned in
-`env-setup/rust-toolchain.toml`, and `env-setup/` also provides a Nix flake for a reproducible
+Rust **edition 2024**, pinned to an exact compiler version rather than to the `stable` channel,
+with both the `wasm32-unknown-unknown` and the `wasm32v1-none` targets and the `rust-src`
+component required for the WebAssembly runtime build. The runtime's build script compiles the
+blob for `wasm32v1-none`, and a newer compiler than the pinned one fails to link it. The exact
+version, components and targets are pinned in `env-setup/rust-toolchain.toml`, which is the one
+place they are declared: the continuous-integration workflow reads the version out of that file, and `env-setup/` also provides a Nix flake for a reproducible
 development shell (`direnv allow`, or `nix develop`). Building from source needs the usual
 Substrate system dependencies (clang, protobuf compiler, libssl, etc.); the list is in
 `deployment/Dockerfile`.

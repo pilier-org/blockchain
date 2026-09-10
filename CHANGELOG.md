@@ -10,6 +10,11 @@ Before any runtime upgrade is deployed, the WebAssembly file being rolled out is
 the fingerprint the continuous-integration run published for the same commit, using
 `scripts/verify-runtime-fingerprint.sh`.
 
+That fingerprint is reproducible because the compiler is pinned to an exact version in
+`env-setup/rust-toolchain.toml`, and both the continuous-integration workflow and the deployment
+image build with that version. Building the runtime with a newer compiler produces a different
+file, or fails to link at all.
+
 ## [runtime 102] — 2026-07-19
 
 ### Added
