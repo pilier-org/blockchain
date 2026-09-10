@@ -228,7 +228,10 @@ fn republish_head_stores_new_body_version_two_and_previous_fingerprint() {
         let stored = get_head(b"552100554", &gs1_id).expect("head record must exist");
         assert_eq!(&stored.body[..], b"corrected body");
         assert_eq!(stored.version, 2);
-        assert_eq!(stored.previous_body_fingerprint, Some(expected_previous_fingerprint));
+        assert_eq!(
+            stored.previous_body_fingerprint,
+            Some(expected_previous_fingerprint)
+        );
     });
 }
 
@@ -334,9 +337,24 @@ fn appended_events_go_consecutively_without_gaps() {
             b"552100554".to_vec().try_into().unwrap();
         let gs1: crate::Gs1Id<Test> = gs1_id.try_into().unwrap();
         assert_eq!(crate::EventCounts::<Test>::get(&company, &gs1), 3);
-        assert_eq!(&crate::Events::<Test>::get((&company, &gs1, 0)).unwrap().body[..], b"shipped");
-        assert_eq!(&crate::Events::<Test>::get((&company, &gs1, 1)).unwrap().body[..], b"received");
-        assert_eq!(&crate::Events::<Test>::get((&company, &gs1, 2)).unwrap().body[..], b"sold");
+        assert_eq!(
+            &crate::Events::<Test>::get((&company, &gs1, 0))
+                .unwrap()
+                .body[..],
+            b"shipped"
+        );
+        assert_eq!(
+            &crate::Events::<Test>::get((&company, &gs1, 1))
+                .unwrap()
+                .body[..],
+            b"received"
+        );
+        assert_eq!(
+            &crate::Events::<Test>::get((&company, &gs1, 2))
+                .unwrap()
+                .body[..],
+            b"sold"
+        );
     });
 }
 
@@ -579,7 +597,12 @@ fn republish_head_does_not_change_event_count_or_events() {
             b"552100554".to_vec().try_into().unwrap();
         let gs1: crate::Gs1Id<Test> = gs1_id.try_into().unwrap();
         assert_eq!(crate::EventCounts::<Test>::get(&company, &gs1), 1);
-        assert_eq!(&crate::Events::<Test>::get((&company, &gs1, 0)).unwrap().body[..], b"shipped");
+        assert_eq!(
+            &crate::Events::<Test>::get((&company, &gs1, 0))
+                .unwrap()
+                .body[..],
+            b"shipped"
+        );
     });
 }
 
@@ -691,10 +714,22 @@ fn realistic_passport_body_and_event_fit_declared_budgets() {
     let record = PassportRecordV1 {
         count: 240,
         composition: vec![
-            CompositionLine { fibre: b"cotton".to_vec(), percentage_bps: 5500 },
-            CompositionLine { fibre: b"polyester".to_vec(), percentage_bps: 3000 },
-            CompositionLine { fibre: b"elastane".to_vec(), percentage_bps: 500 },
-            CompositionLine { fibre: b"viscose".to_vec(), percentage_bps: 1000 },
+            CompositionLine {
+                fibre: b"cotton".to_vec(),
+                percentage_bps: 5500,
+            },
+            CompositionLine {
+                fibre: b"polyester".to_vec(),
+                percentage_bps: 3000,
+            },
+            CompositionLine {
+                fibre: b"elastane".to_vec(),
+                percentage_bps: 500,
+            },
+            CompositionLine {
+                fibre: b"viscose".to_vec(),
+                percentage_bps: 1000,
+            },
         ],
         composition_source: 0,
         certificate_fingerprints: vec![[0x11u8; 32], [0x22u8; 32]],

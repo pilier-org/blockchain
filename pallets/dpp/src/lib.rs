@@ -170,7 +170,9 @@ pub mod pallet {
     /// this pallet never reads it; `recorded_at` is the block number this pallet itself observed
     /// while handling that call, and it is what a reader who does not trust the caller can check
     /// against the chain.
-    #[derive(CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound)]
+    #[derive(
+        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct EventRecord<T: Config> {
         /// The event's body — an opaque byte string this pallet never parses.
@@ -181,7 +183,9 @@ pub mod pallet {
 
     /// One entry in the deduplicated file table: where an evidence file lives and what it is,
     /// keyed in storage by its content fingerprint.
-    #[derive(CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound)]
+    #[derive(
+        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct FileInfo<T: Config> {
         /// The storage endpoint this file's address is relative to.
@@ -207,7 +211,9 @@ pub mod pallet {
     /// version-one record and, for any later version, the hash this pallet itself computed from
     /// the body [`Pallet::republish_head`] replaced — that prior body is not kept in this
     /// pallet's storage, only in the block that published it.
-    #[derive(CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound)]
+    #[derive(
+        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct HeadRecord<T: Config> {
         /// The schema this body is written against, registered in `pallet-pilier-registry`.
@@ -435,8 +441,13 @@ pub mod pallet {
             file_fingerprints: Vec<FileFingerprint>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let (company_registration_number, gs1_id, project_id) =
-                Self::authorise_write(&who, company_registration_number, gs1_id, schema_id, &file_fingerprints)?;
+            let (company_registration_number, gs1_id, project_id) = Self::authorise_write(
+                &who,
+                company_registration_number,
+                gs1_id,
+                schema_id,
+                &file_fingerprints,
+            )?;
             ensure!(
                 !Heads::<T>::contains_key(&company_registration_number, &gs1_id),
                 Error::<T>::RecordAlreadyExists
@@ -489,8 +500,13 @@ pub mod pallet {
             file_fingerprints: Vec<FileFingerprint>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let (company_registration_number, gs1_id, project_id) =
-                Self::authorise_write(&who, company_registration_number, gs1_id, schema_id, &file_fingerprints)?;
+            let (company_registration_number, gs1_id, project_id) = Self::authorise_write(
+                &who,
+                company_registration_number,
+                gs1_id,
+                schema_id,
+                &file_fingerprints,
+            )?;
             let existing = Heads::<T>::get(&company_registration_number, &gs1_id)
                 .ok_or(Error::<T>::RecordNotFound)?;
 
@@ -542,9 +558,10 @@ pub mod pallet {
             body: Vec<u8>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let company_registration_number: CompanyRegistrationNumber<T> = company_registration_number
-                .try_into()
-                .map_err(|_| Error::<T>::CompanyRegistrationNumberTooLong)?;
+            let company_registration_number: CompanyRegistrationNumber<T> =
+                company_registration_number
+                    .try_into()
+                    .map_err(|_| Error::<T>::CompanyRegistrationNumberTooLong)?;
             let gs1_id: Gs1Id<T> = gs1_id.try_into().map_err(|_| Error::<T>::Gs1IdTooLong)?;
 
             ensure!(
@@ -591,16 +608,23 @@ pub mod pallet {
             schema_id: SchemaId,
             file_fingerprints: &[FileFingerprint],
         ) -> Result<(CompanyRegistrationNumber<T>, Gs1Id<T>, ProjectId), DispatchError> {
-            let company_registration_number: CompanyRegistrationNumber<T> = company_registration_number
-                .try_into()
-                .map_err(|_| Error::<T>::CompanyRegistrationNumberTooLong)?;
+            let company_registration_number: CompanyRegistrationNumber<T> =
+                company_registration_number
+                    .try_into()
+                    .map_err(|_| Error::<T>::CompanyRegistrationNumberTooLong)?;
             let gs1_id: Gs1Id<T> = gs1_id.try_into().map_err(|_| Error::<T>::Gs1IdTooLong)?;
 
             let project_id = T::Registry::writer_project(who, &company_registration_number)
                 .ok_or(Error::<T>::NoPermissionForRegistrationNumber)?;
-            ensure!(T::Registry::schema_exists(schema_id), Error::<T>::SchemaNotFound);
+            ensure!(
+                T::Registry::schema_exists(schema_id),
+                Error::<T>::SchemaNotFound
+            );
             for fingerprint in file_fingerprints {
-                ensure!(Files::<T>::contains_key(fingerprint), Error::<T>::FileNotRegistered);
+                ensure!(
+                    Files::<T>::contains_key(fingerprint),
+                    Error::<T>::FileNotRegistered
+                );
             }
 
             Ok((company_registration_number, gs1_id, project_id))

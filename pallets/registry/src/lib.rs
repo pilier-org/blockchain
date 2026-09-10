@@ -129,7 +129,9 @@ mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::{ProjectId, RegistryEntryId, RegistryTypeId, SchemaId, StorageEndpointId, Vec, WeightInfo};
+    use super::{
+        ProjectId, RegistryEntryId, RegistryTypeId, SchemaId, StorageEndpointId, Vec, WeightInfo,
+    };
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Hash;
@@ -221,7 +223,9 @@ pub mod pallet {
     /// A project: an owner account and the accounts allowed to write on the project's behalf
     /// (add code registry entries, create and update storage endpoints). The owner is always
     /// implicitly a writer; `writers` holds the accounts added on top of the owner.
-    #[derive(CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound)]
+    #[derive(
+        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct ProjectInfo<T: Config> {
         /// The account that owns the project.
@@ -237,8 +241,7 @@ pub mod pallet {
 
     /// Every project the pallet knows about, keyed by its identifier.
     #[pallet::storage]
-    pub type Projects<T: Config> =
-        StorageMap<_, Blake2_128Concat, ProjectId, ProjectInfo<T>>;
+    pub type Projects<T: Config> = StorageMap<_, Blake2_128Concat, ProjectId, ProjectInfo<T>>;
 
     /// Which project, if any, currently holds the right to write under a given company
     /// registration number. A registration number maps to at most one project at a time:
@@ -251,7 +254,9 @@ pub mod pallet {
 
     /// A code registry: a short-number-to-string lookup table, plus which project is allowed to
     /// add entries to it and how many numbers it has issued so far.
-    #[derive(CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound)]
+    #[derive(
+        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct RegistryTypeInfo<T: Config> {
         /// The registry's name (for example, "ISO 3166-1 country codes").
@@ -265,7 +270,9 @@ pub mod pallet {
 
     /// One entry inside a code registry: the string a short number stands for, and whether it
     /// has been marked deprecated. An entry is never deleted — see [`Pallet::deprecate_registry_entry`].
-    #[derive(CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound)]
+    #[derive(
+        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct RegistryEntryInfo<T: Config> {
         /// The string this entry's short number stands for.
@@ -301,7 +308,9 @@ pub mod pallet {
     /// passport is readable without the company that wrote it still existing.
     /// `fingerprint` is only an integrity check — it lets someone who already has the
     /// description confirm it was not altered — never the sole record of the schema.
-    #[derive(CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound)]
+    #[derive(
+        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct SchemaInfo<T: Config> {
         /// The product category this schema describes (an application-defined classifier
@@ -331,7 +340,9 @@ pub mod pallet {
     /// own fingerprint, not this address, so this pallet accepts the trade-off that a company
     /// whose registration number's grant has since moved on leaves its past addresses only in
     /// this pallet's event log, which a node with pruned history does not keep.
-    #[derive(CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound)]
+    #[derive(
+        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct StorageEndpointInfo<T: Config> {
         /// The company registration number this endpoint was created under.
@@ -626,8 +637,8 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let registry_type =
-                RegistryTypes::<T>::get(registry_type_id).ok_or(Error::<T>::RegistryTypeNotFound)?;
+            let registry_type = RegistryTypes::<T>::get(registry_type_id)
+                .ok_or(Error::<T>::RegistryTypeNotFound)?;
             ensure!(
                 Self::is_project_member(registry_type.writer_project, &who),
                 Error::<T>::NotRegistryTypeWriter
@@ -638,13 +649,16 @@ pub mod pallet {
                 .map_err(|_| Error::<T>::RegistryEntryValueTooLong)?;
 
             let entry_id = registry_type.next_entry_id;
-            RegistryTypes::<T>::try_mutate(registry_type_id, |maybe_registry_type| -> DispatchResult {
-                let registry_type = maybe_registry_type
-                    .as_mut()
-                    .ok_or(Error::<T>::RegistryTypeNotFound)?;
-                registry_type.next_entry_id = entry_id.saturating_add(1);
-                Ok(())
-            })?;
+            RegistryTypes::<T>::try_mutate(
+                registry_type_id,
+                |maybe_registry_type| -> DispatchResult {
+                    let registry_type = maybe_registry_type
+                        .as_mut()
+                        .ok_or(Error::<T>::RegistryTypeNotFound)?;
+                    registry_type.next_entry_id = entry_id.saturating_add(1);
+                    Ok(())
+                },
+            )?;
             RegistryEntries::<T>::insert(
                 registry_type_id,
                 entry_id,
@@ -680,7 +694,9 @@ pub mod pallet {
                 registry_type_id,
                 entry_id,
                 |maybe_entry| -> DispatchResult {
-                    let entry = maybe_entry.as_mut().ok_or(Error::<T>::RegistryEntryNotFound)?;
+                    let entry = maybe_entry
+                        .as_mut()
+                        .ok_or(Error::<T>::RegistryEntryNotFound)?;
                     entry.deprecated = true;
                     Ok(())
                 },
@@ -801,8 +817,8 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let endpoint =
-                StorageEndpoints::<T>::get(endpoint_id).ok_or(Error::<T>::StorageEndpointNotFound)?;
+            let endpoint = StorageEndpoints::<T>::get(endpoint_id)
+                .ok_or(Error::<T>::StorageEndpointNotFound)?;
             let project_id = CompanyPermissions::<T>::get(&endpoint.company_registration_number)
                 .ok_or(Error::<T>::NoPermissionForRegistrationNumber)?;
             ensure!(
