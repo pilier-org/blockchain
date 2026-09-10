@@ -77,34 +77,32 @@ fn build_genesis_config(
     serde_json::to_value(config).expect("Could not build genesis config.")
 }
 
-// Only testnet preset в runtime
+// The testnet preset.
 //
-// Treasury layout below follows the project's tokenomics table and sums to exactly
-// 4_000_000 PIL. Old variable names (pre-Phase-3) are noted in comments since several
-// addresses are reused for different pools than before.
+// The treasury layout below follows the project's tokenomics table and sums to exactly
+// 4_000_000 PIL.
 pub fn pilier_testnet_config_genesis() -> Value {
     let sudo_key = account_id_from_ss58("5FEjCCNshkU2ptLe943S5KxGXrtXVbbXVBZJzotBD5TGdnFC");
 
-    // 30% / 1,200,000 PIL — was `eco_pool`.
+    // 30% / 1,200,000 PIL.
     let commercial_treasury =
         account_id_from_ss58("5DXmUXXz3xpQ7jyuBoGE2w5UzfrRhwF7qexgS6VcUmcTfpw7");
-    // 25% / 1,000,000 PIL, also the manual faucet — was `faucet`.
+    // 25% / 1,000,000 PIL, also the manual faucet.
     let civic_treasury = account_id_from_ss58("5CqKvhTuH7Dhic9YrCrkEd9AdtEmBct1FF1HYAz24SpAmf9T");
-    // 15% / 600,000 PIL minus the 1,000 PIL Validité carve-out below = 599,000 PIL — was `reserve_pool`.
+    // 15% / 600,000 PIL minus the 1,000 PIL pilot carve-out below = 599,000 PIL.
     let flagship_product_reserve =
         account_id_from_ss58("5EPWmLyfSzqHH6hZkrkra5tJcHHFKttuiQi9PWxriysQbLaP");
-    // 15% / 600,000 PIL — was `team_pool`.
+    // 15% / 600,000 PIL.
     let team_and_advisory =
         account_id_from_ss58("5HC3v3Vde9rREMrjzuawAoLRtkob33HWjaMf9Ki6uMNPpcov");
-    // 10% / 400,000 PIL minus the 300 PIL node carve-out below = 399,700 PIL — was `civic_pool`.
+    // 10% / 400,000 PIL minus the 300 PIL node carve-out below = 399,700 PIL.
     let validator_bootstrap_pool =
         account_id_from_ss58("5CksTfcaZFzLV4Hvz29Lwv51Ug1322v9ZQFXDwpN62FaX4EF");
-    // 5% / 200,000 PIL — new pool, closes the 95%/100% gap in the documented tokenomics; fresh
-    // sr25519 keypair generated 2026-07-19, secret handed to Alex outside the repository.
+    // 5% / 200,000 PIL — closes the 95%/100% gap in the documented tokenomics.
     let foundation_reserve =
         account_id_from_ss58("5GYrFVhEz58LQWHoYRuWtBJ8iEtT1GaFnKvDG8JthqNc3Bt2");
-    // 1,000 PIL test account for Validité, carved out of Flagship Product Reserve — was `treasury_pool`.
-    let validite_test_account =
+    // 1,000 PIL pilot test account, carved out of the Flagship Product Reserve.
+    let pilot_test_account =
         account_id_from_ss58("5Hbm2dCBEbwSUc9KxDtFP55LxZe9Mby1Nsnj3maCrVUGZ3yK");
 
     let node1_aura =
@@ -147,10 +145,10 @@ pub fn pilier_testnet_config_genesis() -> Value {
             (team_and_advisory, 600_000 * UNIT),
             (validator_bootstrap_pool, 399_700 * UNIT),
             (foundation_reserve, 200_000 * UNIT),
-            (validite_test_account, 1_000 * UNIT),
+            (pilot_test_account, 1_000 * UNIT),
             // Practical carve-out from Validator Bootstrap Pool: 100 PIL per node account so
             // each has a small operating balance for technical transactions (chiefly
-            // `session.set_keys`) — see plan section 3, "Практическая строка на валидаторов".
+            // `session.set_keys`).
             (node1_aura.into(), 100 * UNIT),
             (node2_aura.into(), 100 * UNIT),
             (node3_aura.into(), 100 * UNIT),
