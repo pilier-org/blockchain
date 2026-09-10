@@ -13,6 +13,14 @@ jobs:
   checks:
     name: Workspace checks
     runs-on: ubuntu-latest
+    # The runtime's build script compiles the WebAssembly blob on every cargo
+    # command that touches the runtime crate. Under `cargo clippy` that inner
+    # build runs through clippy-driver, which emits object files without the
+    # host-function imports the blob needs, and the link fails on every
+    # ext_storage_*/ext_crypto_* symbol. The blob is not what this job checks:
+    # it is built for real, in release, by the runtime-wasm job below.
+    env:
+      SKIP_WASM_BUILD: 1
     steps:
       - name: Check out the repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
