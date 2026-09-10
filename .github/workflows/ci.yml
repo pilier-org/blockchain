@@ -25,7 +25,7 @@ jobs:
       - name: Install the pinned Rust toolchain
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt, clippy, rust-src
           targets: wasm32-unknown-unknown
 
       - name: Cache the cargo registry and the build output
@@ -67,6 +67,7 @@ jobs:
       - name: Install the pinned Rust toolchain
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
+          components: rust-src
           targets: wasm32-unknown-unknown
 
       - name: Cache the cargo registry and the release build output
