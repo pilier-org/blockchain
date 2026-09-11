@@ -128,13 +128,13 @@ pub type UncheckedExtrinsic =
 
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, TxExtension>;
 
-// `InitializePublicationPrice` is a `VersionedMigration<0, 1, ..>`: it only ever runs once, the
-// first time this runtime's own executive observes `pallet-pilier-dpp` at on-chain storage
-// version 0 — exactly the state a pallet arrives in the moment it is first declared below, since
-// it carries no genesis config of its own. Omitting it here would leave `PublicationPrice` at its
-// `ValueQuery` default of zero forever: nothing else in this runtime ever seeds it.
-#[allow(unused_parens)]
-type Migrations = (pallet_pilier_dpp::migrations::InitializePublicationPrice<Runtime>,);
+// No migration is declared here. `pallet-pilier-dpp`'s `PublicationPrice` carries its own
+// storage default (`DefaultPublicationPrice`, in `pallets/dpp/src/lib.rs`), read for any key that
+// has never been written — the state this pallet is in the moment it is first declared below,
+// whether it arrived by a fresh genesis or by a forkless runtime upgrade, since it carries no
+// genesis config of its own. A written value, including a written zero, always overrides that
+// default.
+type Migrations = ();
 
 pub type Executive = frame_executive::Executive<
     Runtime,
@@ -216,9 +216,9 @@ mod runtime {
     // previously occupied index (0 through 10) and never reordered among themselves or against
     // an existing pallet: a pallet's index is part of the chain's wire format. Neither carries a
     // genesis config of its own — both start empty, and `pallet-pilier-dpp`'s
-    // `PublicationPrice` is seeded by `InitializePublicationPrice` above, not by genesis — so
-    // unlike `ValidatorSet`/`Session`, neither has an ordering dependency on the other or on any
-    // pallet above.
+    // `PublicationPrice` reads as its own storage default until something writes it, not from
+    // genesis — so unlike `ValidatorSet`/`Session`, neither has an ordering dependency on the
+    // other or on any pallet above.
     #[runtime::pallet_index(11)]
     pub type Registry = pallet_pilier_registry;
 

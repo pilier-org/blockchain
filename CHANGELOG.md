@@ -25,8 +25,9 @@ file, or fails to link at all.
   products. Administrative calls on both — granting registry permissions and changing the
   passport publication price — are governed the same way validator changes already are: a
   supermajority (at least 75%) vote of the validators' council, with the root key retained as an
-  emergency override. The publication price itself starts at the value set by this upgrade and
-  can be changed later by the same council vote, without a further runtime upgrade.
+  emergency override. The publication price itself starts at 0.004 PIL, a value the runtime
+  carries directly rather than one set by a migration, and can be changed later by the same
+  council vote, without a further runtime upgrade.
 
 ## [runtime 102] — 2026-07-19
 

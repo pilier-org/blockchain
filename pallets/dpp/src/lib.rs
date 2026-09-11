@@ -74,9 +74,6 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
-/// Storage migrations for this pallet. See [`migrations::InitializePublicationPrice`].
-pub mod migrations;
-
 #[frame_support::pallet]
 pub mod pallet {
     use super::{
@@ -104,10 +101,10 @@ pub mod pallet {
     #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
-    /// This pallet's on-chain storage version. Raised from 0 to 1 by
-    /// [`crate::migrations::InitializePublicationPrice`], which seeds [`PublicationPrice`] with
-    /// its initial value — see that migration's own documentation for why a migration is used
-    /// instead of a genesis config.
+    /// This pallet's on-chain storage version. There is no migration for this pallet: it never
+    /// carried one that ran, and [`PublicationPrice`]'s initial value comes from its own storage
+    /// default, [`DefaultPublicationPrice`], not from a version-gated upgrade step. Kept at 1
+    /// because that is the value already observed on every chain this pallet is part of.
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 
     /// The pallet's configuration trait.
@@ -340,15 +337,26 @@ pub mod pallet {
         EventRecord<T>,
     >;
 
+    /// The publication price this cell reads as when its storage key has never been written:
+    /// four thousand of [`Config::Currency`]'s smallest unit — 0.004 PIL at the runtime's
+    /// one-million-unit token, the figure the published tokenomics names for creating a
+    /// passport. Applies on every chain this pallet is part of, however the pallet arrived
+    /// there — a fresh genesis or a forkless runtime upgrade — because both leave the key
+    /// unwritten the same way. A written value, including a written zero, always overrides this
+    /// default: this default is read only for a key nothing has ever written.
+    #[pallet::type_value]
+    pub fn DefaultPublicationPrice<T: Config>() -> BalanceOf<T> {
+        BalanceOf::<T>::from(4_000u32)
+    }
+
     /// The price charged, in [`Config::Currency`]'s smallest unit, for one call to
     /// [`Pallet::publish_head`] or [`Pallet::append_event`] — see those calls' own documentation
     /// for how it is charged and accounted. Changed only by [`Config::AdminOrigin`] through
-    /// [`Pallet::set_price`]. Seeded to its initial value by
-    /// [`crate::migrations::InitializePublicationPrice`] rather than by a genesis config: this
-    /// pallet is expected to arrive on an already-running chain by a forkless runtime upgrade,
-    /// and a genesis config never runs for one.
+    /// [`Pallet::set_price`]. Reads as [`DefaultPublicationPrice`] for a key nothing has ever
+    /// written; any write, including a write of zero, overrides that default from then on.
     #[pallet::storage]
-    pub type PublicationPrice<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+    pub type PublicationPrice<T: Config> =
+        StorageValue<_, BalanceOf<T>, ValueQuery, DefaultPublicationPrice<T>>;
 
     /// Events that functions in this pallet can emit. Every event names the identifier of the
     /// entity it changed together with the new value of the field that changed, so an observer

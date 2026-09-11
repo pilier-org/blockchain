@@ -1,12 +1,5 @@
-use crate::{
-    Call, Error, EventCounts, EventRecord, Events, Files, PublicationPrice,
-    migrations::InitializePublicationPrice, mock::*,
-};
-use frame_support::{
-    assert_noop, assert_ok,
-    dispatch::Pays,
-    traits::{OnRuntimeUpgrade, StorageVersion},
-};
+use crate::{Call, Error, EventCounts, EventRecord, Events, Files, PublicationPrice, mock::*};
+use frame_support::{assert_noop, assert_ok, dispatch::Pays};
 use sp_runtime::{DispatchError, TokenError, traits::Hash};
 
 /// Registering a fingerprint that already carries the same storage endpoint, path
@@ -143,6 +136,7 @@ fn repeated_publish_head_on_occupied_key_is_rejected_and_body_unchanged() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
 
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
@@ -179,6 +173,7 @@ fn republish_head_under_foreign_registration_number_is_rejected() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
 
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
@@ -211,6 +206,7 @@ fn republish_head_stores_new_body_version_two_and_previous_fingerprint() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
 
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
@@ -249,6 +245,7 @@ fn second_republish_head_raises_version_to_three() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
 
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
@@ -312,6 +309,7 @@ fn appended_events_go_consecutively_without_gaps() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
             b"552100554".to_vec(),
@@ -375,6 +373,7 @@ fn appended_event_carries_the_block_number_it_was_recorded_in() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
         set_block_number(7);
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
@@ -409,6 +408,7 @@ fn events_from_different_blocks_carry_different_block_numbers_and_consecutive_in
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
         set_block_number(3);
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
@@ -453,6 +453,7 @@ fn reading_an_appended_event_returns_the_body_exactly_as_given() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
         set_block_number(4);
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
@@ -505,6 +506,7 @@ fn event_index_is_never_reused() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
             b"552100554".to_vec(),
@@ -538,6 +540,7 @@ fn event_at_exact_ceiling_passes_one_byte_over_is_rejected() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
             b"552100554".to_vec(),
@@ -576,6 +579,7 @@ fn republish_head_does_not_change_event_count_or_events() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
             b"552100554".to_vec(),
@@ -620,6 +624,7 @@ fn publish_head_body_at_exact_ceiling_passes_one_byte_over_is_rejected() {
     new_test_ext().execute_with(|| {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
+        fund_account(1, 100_000);
 
         let at_ceiling = vec![0u8; MaxRecordBodyLen::get() as usize];
         assert_ok!(Dpp::publish_head(
@@ -654,6 +659,7 @@ fn republish_head_body_at_exact_ceiling_passes_one_byte_over_is_rejected() {
         setup_project_with_permission(1, b"552100554");
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 100_000);
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
             b"552100554".to_vec(),
@@ -780,7 +786,9 @@ fn realistic_passport_body_and_event_fit_declared_budgets() {
 }
 
 /// `set_price` from a plain signed account — neither root nor any council backing at all — is
-/// rejected with `DispatchError::BadOrigin`, and `PublicationPrice` is left untouched.
+/// rejected with `DispatchError::BadOrigin`, and writes nothing to `PublicationPrice`'s storage
+/// key: it stays unwritten, so a later read of it still comes from the pallet's own default
+/// rather than from anything this rejected call touched.
 #[test]
 fn set_price_from_foreign_account_is_rejected() {
     new_test_ext().execute_with(|| {
@@ -788,20 +796,21 @@ fn set_price_from_foreign_account_is_rejected() {
             Dpp::set_price(RuntimeOrigin::signed(1), 9_000),
             DispatchError::BadOrigin
         );
-        assert_eq!(PublicationPrice::<Test>::get(), 0);
+        assert!(!PublicationPrice::<Test>::exists());
     });
 }
 
 /// A council motion carrying less than three quarters of the vote (two of four) does not clear
-/// `AdminOrigin`, so `set_price` is rejected with `DispatchError::BadOrigin` and
-/// `PublicationPrice` is left untouched.
+/// `AdminOrigin`, so `set_price` is rejected with `DispatchError::BadOrigin` and writes nothing
+/// to `PublicationPrice`'s storage key: it stays unwritten, exactly as `set_price` from a plain
+/// account above leaves it.
 #[test]
 fn set_price_from_council_below_three_quarters_is_rejected() {
     new_test_ext().execute_with(|| {
         let origin: RuntimeOrigin =
             pallet_collective::RawOrigin::<AccountId, CouncilCollective>::Members(2, 4).into();
         assert_noop!(Dpp::set_price(origin, 9_000), DispatchError::BadOrigin);
-        assert_eq!(PublicationPrice::<Test>::get(), 0);
+        assert!(!PublicationPrice::<Test>::exists());
     });
 }
 
@@ -819,8 +828,9 @@ fn set_price_from_council_at_three_quarters_changes_stored_price() {
 
 /// A price of zero is accepted from a council motion at the threshold, and is what
 /// `PublicationPrice` carries afterwards — this pallet treats zero as a deliberate choice
-/// `set_price` allows, not a value it rejects. The price is first moved away from its default of
-/// zero so the assertion cannot pass merely because storage started there.
+/// `set_price` allows, not a value it rejects. The price is first moved to a nonzero value so the
+/// final assertion of zero cannot pass merely because storage started unwritten and read as the
+/// pallet's own nonzero default — a written zero must actually be observed.
 #[test]
 fn set_price_accepts_zero_price_from_council_at_three_quarters() {
     new_test_ext().execute_with(|| {
@@ -836,28 +846,67 @@ fn set_price_accepts_zero_price_from_council_at_three_quarters() {
     });
 }
 
-/// [`InitializePublicationPrice`] seeds `PublicationPrice` with four thousand of the chain's
-/// smallest unit on storage whose on-chain pallet version is still zero, and raises that version
-/// to one. Running it again afterwards — simulating a later forkless upgrade that bundles it a
-/// second time by mistake — is a no-op: neither the price nor the version changes, even though
-/// the price was moved away from its seeded value in between, which is what proves the second
-/// run touched nothing rather than merely reseeding the same number.
+/// Reading `PublicationPrice` on storage where it has never been written returns the pallet's
+/// own storage default of four thousand of the chain's smallest unit, and the storage key itself
+/// does not exist — the number comes from the default, not from a write nobody made.
 #[test]
-fn migration_seeds_price_once_and_is_noop_on_already_migrated_storage() {
+fn publication_price_reads_as_default_when_never_written() {
     new_test_ext().execute_with(|| {
-        assert_eq!(StorageVersion::get::<Dpp>(), StorageVersion::new(0));
+        assert!(!PublicationPrice::<Test>::exists());
+        assert_eq!(PublicationPrice::<Test>::get(), 4_000);
+    });
+}
+
+/// `publish_head` on storage where `PublicationPrice` has never been written charges the
+/// pallet's own default of four thousand, with no prior call to `set_price` at all — the
+/// default applies to a real charge, not only to a bare read.
+#[test]
+fn publish_head_charges_default_publication_price_without_any_prior_set_price_call() {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        fund_account(1, 10_000);
+        assert!(!PublicationPrice::<Test>::exists());
+
+        assert_ok!(Dpp::publish_head(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            b"https://id.gs1.org/01/09506000134352".to_vec(),
+            schema_id,
+            b"passport body".to_vec(),
+            Vec::new(),
+        ));
+
+        assert_eq!(pallet_balances::Pallet::<Test>::free_balance(1), 6_000);
+    });
+}
+
+/// After a council vote sets `PublicationPrice` to zero, the storage key exists, reading it
+/// gives zero, and `publish_head` charges nothing — a written zero overrides the pallet's own
+/// nonzero default rather than the default reasserting itself.
+#[test]
+fn publish_head_charges_nothing_after_council_votes_price_to_zero() {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        fund_account(1, 10_000);
+
+        let origin: RuntimeOrigin =
+            pallet_collective::RawOrigin::<AccountId, CouncilCollective>::Members(3, 4).into();
+        assert_ok!(Dpp::set_price(origin, 0));
+        assert!(PublicationPrice::<Test>::exists());
         assert_eq!(PublicationPrice::<Test>::get(), 0);
 
-        InitializePublicationPrice::<Test>::on_runtime_upgrade();
+        assert_ok!(Dpp::publish_head(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            b"https://id.gs1.org/01/09506000134352".to_vec(),
+            schema_id,
+            b"passport body".to_vec(),
+            Vec::new(),
+        ));
 
-        assert_eq!(PublicationPrice::<Test>::get(), 4_000);
-        assert_eq!(StorageVersion::get::<Dpp>(), StorageVersion::new(1));
-
-        PublicationPrice::<Test>::put(9_000u128);
-        InitializePublicationPrice::<Test>::on_runtime_upgrade();
-
-        assert_eq!(PublicationPrice::<Test>::get(), 9_000);
-        assert_eq!(StorageVersion::get::<Dpp>(), StorageVersion::new(1));
+        assert_eq!(pallet_balances::Pallet::<Test>::free_balance(1), 10_000);
     });
 }
 
@@ -904,8 +953,10 @@ fn append_event_credits_publication_price_to_current_block_author() {
         let schema_id = register_schema();
         let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
         fund_account(1, 10_000);
-        // PublicationPrice defaults to zero, so this first call costs nothing and only exists
-        // to give append_event a head record to attach to.
+        // The price is set to zero explicitly for this first call, so it costs nothing and only
+        // exists to give append_event a head record to attach to — the pallet's own storage
+        // default is nonzero, so leaving the key unwritten would charge this call too.
+        PublicationPrice::<Test>::put(0);
         assert_ok!(Dpp::publish_head(
             RuntimeOrigin::signed(1),
             b"552100554".to_vec(),
