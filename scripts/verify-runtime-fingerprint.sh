@@ -134,7 +134,16 @@ if [ -z "$expected" ]; then
   expected="$(awk '{print $1; exit}' "$fingerprint_file")"
 fi
 
-actual="$(sha256sum "$wasm_path" | awk '{print $1}')"
+# GNU coreutils ships sha256sum; macOS ships shasum instead and has no sha256sum at all, and the
+# operator who runs this before a rollout may be on either.
+if command -v sha256sum >/dev/null 2>&1; then
+  actual="$(sha256sum "$wasm_path" | awk '{print $1}')"
+elif command -v shasum >/dev/null 2>&1; then
+  actual="$(shasum -a 256 "$wasm_path" | awk '{print $1}')"
+else
+  echo "neither sha256sum nor shasum is available to compute the fingerprint" >&2
+  exit 2
+fi
 
 if [ "$actual" = "$expected" ]; then
   echo "OK: $wasm_path matches the published fingerprint ($actual)"
