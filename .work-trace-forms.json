@@ -1,0 +1,10 @@
+{
+  "forms": [
+    {
+      "kind": "function",
+      "file_pattern": "\\.rs$",
+      "function_pattern": "#\\[test\\]\\s*\\n\\s*fn\\s+(\\w+)",
+      "description": "a changed Rust file, each function marked `#[test]` inside it, named individually"
+    }
+  ]
+}
