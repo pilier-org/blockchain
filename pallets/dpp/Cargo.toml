@@ -19,13 +19,18 @@ codec = { features = [
 scale-info = { features = [
 	"derive",
 ], workspace = true }
+log.workspace = true
 frame-benchmarking = { optional = true, workspace = true }
 frame-support.workspace = true
 frame-system.workspace = true
+pallet-authorship.workspace = true
 sp-runtime.workspace = true
 pallet-pilier-registry = { path = "../registry", default-features = false }
 
 [dev-dependencies]
+pallet-balances = { default-features = true, workspace = true }
+pallet-collective = { default-features = true, workspace = true }
+pallet-transaction-payment = { default-features = true, workspace = true }
 sp-core = { default-features = true, workspace = true }
 sp-io = { default-features = true, workspace = true }
 sp-runtime = { default-features = true, workspace = true }
@@ -37,6 +42,8 @@ std = [
 	"frame-benchmarking?/std",
 	"frame-support/std",
 	"frame-system/std",
+	"log/std",
+	"pallet-authorship/std",
 	"pallet-pilier-registry/std",
 	"scale-info/std",
 	"sp-runtime/std",
@@ -50,5 +57,6 @@ runtime-benchmarks = [
 try-runtime = [
 	"frame-support/try-runtime",
 	"frame-system/try-runtime",
+	"pallet-authorship/try-runtime",
 	"pallet-pilier-registry/try-runtime",
 ]

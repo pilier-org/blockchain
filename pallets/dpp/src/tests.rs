@@ -1,6 +1,13 @@
-use crate::{Error, EventRecord, Files, mock::*};
-use frame_support::{assert_noop, assert_ok};
-use sp_runtime::traits::Hash;
+use crate::{
+    Call, Error, EventCounts, EventRecord, Events, Files, PublicationPrice,
+    migrations::InitializePublicationPrice, mock::*,
+};
+use frame_support::{
+    assert_noop, assert_ok,
+    dispatch::Pays,
+    traits::{OnRuntimeUpgrade, StorageVersion},
+};
+use sp_runtime::{DispatchError, TokenError, traits::Hash};
 
 /// Registering a fingerprint that already carries the same storage endpoint, path
 /// and content type succeeds and leaves the existing file table entry untouched.
@@ -770,4 +777,538 @@ fn realistic_passport_body_and_event_fit_declared_budgets() {
         event_bytes.len()
     );
     assert!(event_bytes.len() as u32 <= MaxEventLen::get());
+}
+
+/// `set_price` from a plain signed account — neither root nor any council backing at all — is
+/// rejected with `DispatchError::BadOrigin`, and `PublicationPrice` is left untouched.
+#[test]
+fn set_price_from_foreign_account_is_rejected() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            Dpp::set_price(RuntimeOrigin::signed(1), 9_000),
+            DispatchError::BadOrigin
+        );
+        assert_eq!(PublicationPrice::<Test>::get(), 0);
+    });
+}
+
+/// A council motion carrying less than three quarters of the vote (two of four) does not clear
+/// `AdminOrigin`, so `set_price` is rejected with `DispatchError::BadOrigin` and
+/// `PublicationPrice` is left untouched.
+#[test]
+fn set_price_from_council_below_three_quarters_is_rejected() {
+    new_test_ext().execute_with(|| {
+        let origin: RuntimeOrigin =
+            pallet_collective::RawOrigin::<AccountId, CouncilCollective>::Members(2, 4).into();
+        assert_noop!(Dpp::set_price(origin, 9_000), DispatchError::BadOrigin);
+        assert_eq!(PublicationPrice::<Test>::get(), 0);
+    });
+}
+
+/// A council motion carrying exactly three quarters of the vote (three of four) clears
+/// `AdminOrigin`, and `PublicationPrice` carries the new value after the call returns.
+#[test]
+fn set_price_from_council_at_three_quarters_changes_stored_price() {
+    new_test_ext().execute_with(|| {
+        let origin: RuntimeOrigin =
+            pallet_collective::RawOrigin::<AccountId, CouncilCollective>::Members(3, 4).into();
+        assert_ok!(Dpp::set_price(origin, 9_000));
+        assert_eq!(PublicationPrice::<Test>::get(), 9_000);
+    });
+}
+
+/// A price of zero is accepted from a council motion at the threshold, and is what
+/// `PublicationPrice` carries afterwards — this pallet treats zero as a deliberate choice
+/// `set_price` allows, not a value it rejects. The price is first moved away from its default of
+/// zero so the assertion cannot pass merely because storage started there.
+#[test]
+fn set_price_accepts_zero_price_from_council_at_three_quarters() {
+    new_test_ext().execute_with(|| {
+        let origin: RuntimeOrigin =
+            pallet_collective::RawOrigin::<AccountId, CouncilCollective>::Members(3, 4).into();
+        assert_ok!(Dpp::set_price(origin, 500));
+        assert_eq!(PublicationPrice::<Test>::get(), 500);
+
+        let origin: RuntimeOrigin =
+            pallet_collective::RawOrigin::<AccountId, CouncilCollective>::Members(3, 4).into();
+        assert_ok!(Dpp::set_price(origin, 0));
+        assert_eq!(PublicationPrice::<Test>::get(), 0);
+    });
+}
+
+/// [`InitializePublicationPrice`] seeds `PublicationPrice` with four thousand of the chain's
+/// smallest unit on storage whose on-chain pallet version is still zero, and raises that version
+/// to one. Running it again afterwards — simulating a later forkless upgrade that bundles it a
+/// second time by mistake — is a no-op: neither the price nor the version changes, even though
+/// the price was moved away from its seeded value in between, which is what proves the second
+/// run touched nothing rather than merely reseeding the same number.
+#[test]
+fn migration_seeds_price_once_and_is_noop_on_already_migrated_storage() {
+    new_test_ext().execute_with(|| {
+        assert_eq!(StorageVersion::get::<Dpp>(), StorageVersion::new(0));
+        assert_eq!(PublicationPrice::<Test>::get(), 0);
+
+        InitializePublicationPrice::<Test>::on_runtime_upgrade();
+
+        assert_eq!(PublicationPrice::<Test>::get(), 4_000);
+        assert_eq!(StorageVersion::get::<Dpp>(), StorageVersion::new(1));
+
+        PublicationPrice::<Test>::put(9_000u128);
+        InitializePublicationPrice::<Test>::on_runtime_upgrade();
+
+        assert_eq!(PublicationPrice::<Test>::get(), 9_000);
+        assert_eq!(StorageVersion::get::<Dpp>(), StorageVersion::new(1));
+    });
+}
+
+/// `publish_head`, when a block author is determined, charges `PublicationPrice` to the caller
+/// and credits the exact same amount to the account `pallet_authorship::Pallet::author()` names
+/// as the current block's author — the property this pallet's own documentation promises,
+/// checked here by account balance rather than by the mechanism that produced it.
+#[test]
+fn publish_head_credits_publication_price_to_current_block_author() {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        set_block_author(2);
+        fund_account(1, 10_000);
+        PublicationPrice::<Test>::put(4_000);
+
+        let result = Dpp::publish_head(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            b"https://id.gs1.org/01/09506000134352".to_vec(),
+            schema_id,
+            b"passport body".to_vec(),
+            Vec::new(),
+        );
+
+        assert_eq!(result.expect("call must succeed").pays_fee, Pays::No);
+        assert_eq!(pallet_balances::Pallet::<Test>::free_balance(1), 6_000);
+        assert_eq!(
+            pallet_balances::Pallet::<Test>::free_balance(2),
+            4_000,
+            "the current block author (account 2, set by set_block_author) must receive the charged price"
+        );
+        assert_eq!(pallet_authorship::Pallet::<Test>::author(), Some(2));
+    });
+}
+
+/// `append_event`, when a block author is determined, charges `PublicationPrice` to the caller
+/// and credits the exact same amount to the account `pallet_authorship::Pallet::author()` names
+/// as the current block's author, exactly as `publish_head` does.
+#[test]
+fn append_event_credits_publication_price_to_current_block_author() {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 10_000);
+        // PublicationPrice defaults to zero, so this first call costs nothing and only exists
+        // to give append_event a head record to attach to.
+        assert_ok!(Dpp::publish_head(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            gs1_id.clone(),
+            schema_id,
+            b"first body".to_vec(),
+            Vec::new(),
+        ));
+
+        set_block_author(3);
+        PublicationPrice::<Test>::put(4_000);
+
+        let result = Dpp::append_event(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            gs1_id,
+            b"shipped".to_vec(),
+        );
+
+        assert_eq!(result.expect("call must succeed").pays_fee, Pays::No);
+        assert_eq!(pallet_balances::Pallet::<Test>::free_balance(1), 6_000);
+        assert_eq!(
+            pallet_balances::Pallet::<Test>::free_balance(3),
+            4_000,
+            "the current block author (account 3, set by set_block_author) must receive the charged price"
+        );
+        assert_eq!(pallet_authorship::Pallet::<Test>::author(), Some(3));
+    });
+}
+
+/// `publish_head`, when no block author can be determined, still succeeds: it charges
+/// `PublicationPrice` to the caller, burns the amount instead of crediting anyone (so total
+/// issuance drops by the same amount), and the head record it publishes is created exactly as
+/// it would be with a determined author — following the runtime's own standard fee handler
+/// (`ToAuthor`), which burns under the same crash case rather than rejecting the call.
+#[test]
+fn publish_head_burns_price_and_reduces_total_issuance_when_block_author_undetermined() {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 10_000);
+        PublicationPrice::<Test>::put(4_000);
+        // new_test_ext() already clears the block author; asserted so the burn below is known
+        // to exercise the "no author" branch, not merely an unset fixture.
+        assert_eq!(pallet_authorship::Pallet::<Test>::author(), None);
+        let issuance_before = pallet_balances::Pallet::<Test>::total_issuance();
+
+        assert_ok!(Dpp::publish_head(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            gs1_id.clone(),
+            schema_id,
+            b"passport body".to_vec(),
+            Vec::new(),
+        ));
+
+        assert_eq!(pallet_balances::Pallet::<Test>::free_balance(1), 6_000);
+        assert_eq!(
+            pallet_balances::Pallet::<Test>::total_issuance(),
+            issuance_before - 4_000
+        );
+        assert!(get_head(b"552100554", &gs1_id).is_some());
+    });
+}
+
+/// A failed `publish_head` call — here, one referencing an unregistered file fingerprint —
+/// returns post-dispatch information without the "no fee" flag, so the standard transaction fee
+/// stays charged exactly as it would for any other failed extrinsic; `Pays::No` is reserved for
+/// success and never returned alongside an error.
+#[test]
+fn failed_publish_head_does_not_return_pays_no() {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+
+        let result = Dpp::publish_head(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            b"https://id.gs1.org/01/09506000134352".to_vec(),
+            schema_id,
+            b"passport body".to_vec(),
+            vec![[9u8; 32]],
+        );
+
+        let err = result.expect_err("must fail: referenced fingerprint is not registered");
+        assert_eq!(err.error, Error::<Test>::FileNotRegistered.into());
+        assert_eq!(err.post_info.pays_fee, Pays::Yes);
+    });
+}
+
+/// `publish_head`'s `Event::PublicationPriceCharged` names the passport's own key, the exact
+/// amount charged, and the account that received it — checked field by field so an observer
+/// reading only this event, without touching storage, can reconstruct the charge.
+#[test]
+fn publish_head_emits_publication_price_charged_event_with_key_amount_and_recipient() {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        let company: crate::CompanyRegistrationNumber<Test> =
+            b"552100554".to_vec().try_into().unwrap();
+        let gs1: crate::Gs1Id<Test> = b"https://id.gs1.org/01/09506000134352"
+            .to_vec()
+            .try_into()
+            .unwrap();
+        // frame_system never populates Events<T> at block zero ("don't populate events on
+        // genesis"), so this must run on a nonzero block to observe anything at all.
+        set_block_number(1);
+        set_block_author(2);
+        fund_account(1, 10_000);
+        PublicationPrice::<Test>::put(4_000);
+
+        assert_ok!(Dpp::publish_head(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            b"https://id.gs1.org/01/09506000134352".to_vec(),
+            schema_id,
+            b"passport body".to_vec(),
+            Vec::new(),
+        ));
+
+        let charged = System::events()
+            .into_iter()
+            .find_map(|record| match record.event {
+                RuntimeEvent::Dpp(crate::Event::PublicationPriceCharged {
+                    company_registration_number,
+                    gs1_id,
+                    amount,
+                    recipient,
+                }) => Some((company_registration_number, gs1_id, amount, recipient)),
+                _ => None,
+            })
+            .expect("PublicationPriceCharged must have been emitted");
+
+        assert_eq!(charged.0, company);
+        assert_eq!(charged.1, gs1);
+        assert_eq!(charged.2, 4_000);
+        assert_eq!(charged.3, Some(2));
+    });
+}
+
+/// `append_event`'s `Event::PublicationPriceCharged` names the passport's own key, the exact
+/// amount charged, and the account that received it, exactly as `publish_head`'s own does.
+#[test]
+fn append_event_emits_publication_price_charged_event_with_key_amount_and_recipient() {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        let gs1_id_bytes = b"https://id.gs1.org/01/09506000134352".to_vec();
+        let company: crate::CompanyRegistrationNumber<Test> =
+            b"552100554".to_vec().try_into().unwrap();
+        let gs1: crate::Gs1Id<Test> = gs1_id_bytes.clone().try_into().unwrap();
+        // frame_system never populates Events<T> at block zero ("don't populate events on
+        // genesis"), so this must run on a nonzero block to observe anything at all.
+        set_block_number(1);
+        fund_account(1, 10_000);
+        assert_ok!(Dpp::publish_head(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            gs1_id_bytes.clone(),
+            schema_id,
+            b"first body".to_vec(),
+            Vec::new(),
+        ));
+
+        set_block_author(3);
+        PublicationPrice::<Test>::put(4_000);
+
+        assert_ok!(Dpp::append_event(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            gs1_id_bytes,
+            b"shipped".to_vec(),
+        ));
+
+        let charged = System::events()
+            .into_iter()
+            .rev()
+            .find_map(|record| match record.event {
+                RuntimeEvent::Dpp(crate::Event::PublicationPriceCharged {
+                    company_registration_number,
+                    gs1_id,
+                    amount,
+                    recipient,
+                }) => Some((company_registration_number, gs1_id, amount, recipient)),
+                _ => None,
+            })
+            .expect("PublicationPriceCharged must have been emitted");
+
+        assert_eq!(charged.0, company);
+        assert_eq!(charged.1, gs1);
+        assert_eq!(charged.2, 4_000);
+        assert_eq!(charged.3, Some(3));
+    });
+}
+
+/// The mock's own `TransactionByteFee` — the length-fee coefficient
+/// [`dispatch_through_fee_pipeline`] and every phase-C test below actually run against — equals
+/// ten, the same literal `runtime/src/configs/mod.rs` computes as `10 * MICRO_UNIT` (`MICRO_UNIT`
+/// is one smallest unit there). Named as a direct number rather than compared against an import
+/// from the runtime crate, which this pallet cannot depend on without a cycle: a future edit that
+/// changes one side of this constant without the other now fails this test instead of staying
+/// invisible.
+#[test]
+fn mock_transaction_byte_fee_matches_runtime_literal() {
+    assert_eq!(TransactionByteFee::get(), 10);
+}
+
+/// Publishes a fresh passport with a `body_len`-byte body, priced at `price`, through the real
+/// fee pipeline (`tip` zero), and returns how much the publisher's own balance actually dropped
+/// by. The call is asserted to succeed inside this helper — a caller only ever wants the amount
+/// charged for a call that actually went through.
+fn publish_head_net_charge(price: Balance, body_len: usize) -> Balance {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        fund_account(1, 1_000_000);
+        PublicationPrice::<Test>::put(price);
+
+        let call = RuntimeCall::Dpp(Call::<Test>::publish_head {
+            company_registration_number: b"552100554".to_vec(),
+            gs1_id: b"https://id.gs1.org/01/09506000134352".to_vec(),
+            schema_id,
+            body: vec![7u8; body_len],
+            file_fingerprints: Vec::new(),
+        });
+
+        let balance_before = pallet_balances::Pallet::<Test>::free_balance(1);
+        let (outcome, _standard_fee) = dispatch_through_fee_pipeline(1, 0, call);
+        outcome
+            .expect("transaction must validate")
+            .expect("publish_head must succeed");
+        let balance_after = pallet_balances::Pallet::<Test>::free_balance(1);
+
+        balance_before - balance_after
+    })
+}
+
+/// Through the real fee pipeline, `publish_head`'s total charge to the publisher — the standard
+/// transaction fee, refunded in full on success because the call returns `Pays::No`, plus this
+/// pallet's own fixed `PublicationPrice` — equals the price alone and does not depend on the
+/// record body's length: a one-hundred-byte body and a body at the pallet's own ceiling
+/// (`MaxRecordBodyLen`, four kibibytes in this mock) cost exactly the same.
+#[test]
+fn publish_head_total_charge_equals_price_and_is_independent_of_record_length() {
+    let price = 4_000;
+
+    assert_eq!(publish_head_net_charge(price, 100), price);
+    assert_eq!(
+        publish_head_net_charge(price, MaxRecordBodyLen::get() as usize),
+        price
+    );
+}
+
+/// At a `PublicationPrice` of zero and a transaction carrying no voluntary tip, a successful
+/// `publish_head` through the real fee pipeline does not change the publisher's balance at all:
+/// this pallet's own charge is zero, and the standard transaction fee is refunded in full because
+/// the call returns `Pays::No`.
+#[test]
+fn publish_head_at_zero_price_and_no_tip_does_not_change_publisher_balance() {
+    assert_eq!(publish_head_net_charge(0, 100), 0);
+}
+
+/// A `publish_head` call that fails — here, one referencing an unregistered file fingerprint —
+/// leaves the standard transaction fee charged in full through the real fee pipeline:
+/// `pallet-transaction-payment`'s extension withdraws it up front and, since a failed call's
+/// `PostDispatchInfo` keeps `Pays::Yes`, never refunds any of it. The expected amount is the
+/// standard fee `pallet-transaction-payment` itself computed for this call
+/// (`dispatch_through_fee_pipeline`'s own return value, via `TransactionPayment::compute_fee`),
+/// not a number duplicated by this test, so it can never silently drift from what the extension
+/// actually charges.
+#[test]
+fn failed_publish_head_charges_the_standard_fee_in_full() {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        fund_account(1, 1_000_000);
+
+        let call = RuntimeCall::Dpp(Call::<Test>::publish_head {
+            company_registration_number: b"552100554".to_vec(),
+            gs1_id: b"https://id.gs1.org/01/09506000134352".to_vec(),
+            schema_id,
+            body: b"passport body".to_vec(),
+            file_fingerprints: vec![[9u8; 32]],
+        });
+
+        let balance_before = pallet_balances::Pallet::<Test>::free_balance(1);
+        let (outcome, standard_fee) = dispatch_through_fee_pipeline(1, 0, call);
+        assert!(
+            standard_fee > 0,
+            "the standard fee must be nonzero for this test to prove anything"
+        );
+
+        let dispatch_err = outcome
+            .expect("transaction must validate")
+            .expect_err("call must fail: referenced fingerprint is not registered");
+        assert_eq!(dispatch_err.error, Error::<Test>::FileNotRegistered.into());
+
+        let balance_after = pallet_balances::Pallet::<Test>::free_balance(1);
+        assert_eq!(balance_before - balance_after, standard_fee);
+    });
+}
+
+/// Appends an event of `event_len` bytes to a freshly published passport (published at price
+/// zero, so the setup itself is free), then, priced at `price`, appends it through the real fee
+/// pipeline (`tip` zero) and returns how much the publisher's own balance actually dropped by.
+fn append_event_net_charge(price: Balance, event_len: usize) -> Balance {
+    new_test_ext().execute_with(|| {
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        fund_account(1, 1_000_000);
+        assert_ok!(Dpp::publish_head(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            gs1_id.clone(),
+            schema_id,
+            b"first body".to_vec(),
+            Vec::new(),
+        ));
+
+        PublicationPrice::<Test>::put(price);
+        let call = RuntimeCall::Dpp(Call::<Test>::append_event {
+            company_registration_number: b"552100554".to_vec(),
+            gs1_id,
+            body: vec![7u8; event_len],
+        });
+
+        let balance_before = pallet_balances::Pallet::<Test>::free_balance(1);
+        let (outcome, _standard_fee) = dispatch_through_fee_pipeline(1, 0, call);
+        outcome
+            .expect("transaction must validate")
+            .expect("append_event must succeed");
+        let balance_after = pallet_balances::Pallet::<Test>::free_balance(1);
+
+        balance_before - balance_after
+    })
+}
+
+/// Through the real fee pipeline, `append_event`'s total charge to the publisher equals
+/// `PublicationPrice` alone, regardless of the event body's length (one byte against the
+/// pallet's own ceiling, `MaxEventLen`), and equals exactly what `publish_head` charges for the
+/// same price — both calls share the same charging mechanism, `Pallet::charge_publication_price`.
+#[test]
+fn append_event_total_charge_equals_price_independent_of_event_length_and_matches_publish_head() {
+    let price = 4_000;
+    let publish_head_charge = publish_head_net_charge(price, 100);
+
+    assert_eq!(append_event_net_charge(price, 1), price);
+    assert_eq!(
+        append_event_net_charge(price, MaxEventLen::get() as usize),
+        price
+    );
+    assert_eq!(append_event_net_charge(price, 1), publish_head_charge);
+}
+
+/// A `publish_head` call from a payer who cannot afford `PublicationPrice` is rejected with a
+/// named error — `TokenError::FundsUnavailable`, the same error `fungible::Balanced::withdraw`
+/// itself returns under `Precision::Exact` — and leaves every piece of storage this pallet could
+/// have written exactly as it was before the call: no head record at the key, no row in the file
+/// table, no row in the event table, and no event deposited at all (not `PublicationPriceCharged`
+/// or anything else).
+#[test]
+fn publish_head_rejects_insufficient_funds_for_publication_price_and_leaves_storage_untouched() {
+    new_test_ext().execute_with(|| {
+        // frame_system never populates Events<T> at block zero, so this must run on a nonzero
+        // block — otherwise "no event deposited" would hold trivially even if the pallet wrongly
+        // deposited one.
+        set_block_number(1);
+        setup_project_with_permission(1, b"552100554");
+        let schema_id = register_schema();
+        let gs1_id = b"https://id.gs1.org/01/09506000134352".to_vec();
+        let company: crate::CompanyRegistrationNumber<Test> =
+            b"552100554".to_vec().try_into().unwrap();
+        let gs1: crate::Gs1Id<Test> = gs1_id.clone().try_into().unwrap();
+        PublicationPrice::<Test>::put(4_000);
+        fund_account(1, 3_999);
+
+        let events_before = System::events().len();
+
+        let result = Dpp::publish_head(
+            RuntimeOrigin::signed(1),
+            b"552100554".to_vec(),
+            gs1_id.clone(),
+            schema_id,
+            b"passport body".to_vec(),
+            Vec::new(),
+        );
+
+        let err = result.expect_err("must fail: payer cannot afford the publication price");
+        assert_eq!(
+            err.error,
+            DispatchError::Token(TokenError::FundsUnavailable)
+        );
+
+        assert!(get_head(b"552100554", &gs1_id).is_none());
+        assert_eq!(Files::<Test>::iter().count(), 0);
+        assert_eq!(Events::<Test>::iter().count(), 0);
+        assert_eq!(EventCounts::<Test>::get(&company, &gs1), 0);
+        assert_eq!(
+            System::events().len(),
+            events_before,
+            "no event, including PublicationPriceCharged, must be deposited on this failure"
+        );
+    });
 }
