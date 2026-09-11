@@ -1,13 +1,13 @@
 // Copyright (C) 2026 Pilier Team.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Integration tests for the mutable-validator-set work (Phase 4b): proving that
-//! the *composed* runtime — `pallet-validator-set`, `pallet-session` and the validators' council
-//! (`pallet-collective`, instance `Council`) wired together in `runtime/src/configs/mod.rs` —
-//! actually behaves the way Phase 4a's wiring claims, not merely that it compiles.
+//! Integration tests for the mutable validator set: proving that the *composed* runtime —
+//! `pallet-validator-set`, `pallet-session` and the validators' council (`pallet-collective`,
+//! instance `Council`) wired together in `runtime/src/configs/mod.rs` — actually behaves the way
+//! that wiring claims, not merely that it compiles.
 //!
-//! These tests build the real `Runtime` type (not a hand-rolled mock), because the risk Phase 4b
-//! guards against is specifically a mismatch between the mock's wiring and the runtime's wiring;
+//! These tests build the real `Runtime` type (not a hand-rolled mock), because the risk they
+//! guard against is specifically a mismatch between the mock's wiring and the runtime's wiring;
 //! testing a mock would not catch that. Every test below builds its own fresh, in-memory
 //! externalities (`sp_io::TestExternalities`) from a `RuntimeGenesisConfig`, the same genesis
 //! struct `runtime/src/genesis_config_presets.rs` builds for the real chain, so the account/key

@@ -62,11 +62,10 @@ impl ChangeMembers<AccountId> for TestMembershipChanged {
 }
 
 impl pallet_validator_set::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
-    // Stand-in for "council supermajority, or root" until the council pallet exists (see the
-    // parent plan's Phase 4). Root is a realistic and simple choice for unit tests: it lets us
-    // assert both that an authorised call (root) succeeds and an unauthorised one (any signed
-    // account) is rejected.
+    // Stand-in for "council supermajority, or root", which the runtime wires up and a unit test
+    // has no council for. Root is a realistic and simple choice here: it lets us assert both
+    // that an authorised call (root) succeeds and an unauthorised one (any signed account) is
+    // rejected.
     type AddRemoveOrigin = EnsureRoot<AccountId>;
     type MembershipChanged = TestMembershipChanged;
     type MinValidators = MinValidators;

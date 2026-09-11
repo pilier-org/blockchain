@@ -223,13 +223,12 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
 /// Validator-set configuration. `AddRemoveOrigin` allows either root (Sudo, an emergency lever)
 /// or a council supermajority of at least 75% (`EnsureProportionAtLeast<.., 3, 4>`) to add or
 /// remove a validator — this is the "council supermajority, or root as an emergency lever" design
-/// from Phase 4 of the mutable-validator-set plan, and the 3/4 threshold matches the 75% approval
+/// the design this chain committed to, and the 3/4 threshold matches the 75% approval
 /// documented publicly. `MembershipChanged = Council` keeps the council's member list in lock-step
 /// with the validator set: whenever `pallet_validator_set` adds or removes a validator, it calls
 /// `Council::change_members_sorted(..)` so the same accounts that hold validator seats also hold
 /// council votes.
 impl pallet_validator_set::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type AddRemoveOrigin = CouncilOrRoot;
     type MembershipChanged = Council;
     type MinValidators = ConstU32<1>;

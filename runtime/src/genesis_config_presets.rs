@@ -27,7 +27,7 @@ fn account_id_from_ss58(s: &str) -> AccountId {
 /// `session` genesis keys below, at the first session boundary. `validator_set` seeds our own
 /// `pallet-validator-set`, which is what `pallet-session` asks for the validator list going
 /// forward (see `pallet_session::SessionManager` impl in `pallets/validator-set`). `council`
-/// (Phase 4a) seeds the same three validator accounts as the council's initial membership;
+/// seeds the same three validator accounts as the council's initial membership;
 /// `pallet_validator_set::Config::MembershipChanged` keeps the two lists in sync after genesis.
 fn build_genesis_config(
     validators: Vec<(AccountId, AuraId, GrandpaId)>,

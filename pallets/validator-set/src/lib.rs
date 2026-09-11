@@ -73,10 +73,7 @@ pub mod pallet {
 
     /// The pallet's configuration trait.
     #[pallet::config]
-    pub trait Config: frame_system::Config {
-        /// The overarching runtime event type.
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
+    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
         /// The origin allowed to add or remove a validator. In the runtime this is wired to
         /// "council supermajority, or root as an emergency lever"; unit tests use a fixed
         /// signed account instead.
