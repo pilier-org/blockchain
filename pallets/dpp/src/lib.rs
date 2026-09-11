@@ -46,6 +46,8 @@ pub trait WeightInfo {
     fn republish_head() -> frame_support::pallet_prelude::Weight;
     /// Weight for [`Pallet::append_event`].
     fn append_event() -> frame_support::pallet_prelude::Weight;
+    /// Weight for [`Pallet::set_price`].
+    fn set_price() -> frame_support::pallet_prelude::Weight;
 }
 
 impl WeightInfo for () {
@@ -61,6 +63,9 @@ impl WeightInfo for () {
     fn append_event() -> frame_support::pallet_prelude::Weight {
         frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
     }
+    fn set_price() -> frame_support::pallet_prelude::Weight {
+        frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
+    }
 }
 
 #[cfg(test)]
@@ -69,13 +74,23 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+/// Storage migrations for this pallet. See [`migrations::InitializePublicationPrice`].
+pub mod migrations;
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::{
         EventIndex, FileFingerprint, ProjectId, RegistryAccess, SchemaId, StorageEndpointId, Vec,
         WeightInfo,
     };
-    use frame_support::pallet_prelude::*;
+    use frame_support::{
+        pallet_prelude::*,
+        traits::{
+            Imbalance, fungible,
+            fungible::Balanced,
+            tokens::{Fortitude, Precision, Preservation},
+        },
+    };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Hash;
 
@@ -86,8 +101,15 @@ pub mod pallet {
     /// used with storage-info-driven tooling — the same trade-off `pallet-pilier-registry`
     /// already makes in this codebase.
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
+
+    /// This pallet's on-chain storage version. Raised from 0 to 1 by
+    /// [`crate::migrations::InitializePublicationPrice`], which seeds [`PublicationPrice`] with
+    /// its initial value — see that migration's own documentation for why a migration is used
+    /// instead of a genesis config.
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 
     /// The pallet's configuration trait.
     ///
@@ -96,11 +118,25 @@ pub mod pallet {
     /// with a bound too small would reject real data on a live chain, where the type cannot be
     /// changed without a runtime upgrade.
     #[pallet::config]
-    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
+    pub trait Config:
+        frame_system::Config<RuntimeEvent: From<Event<Self>>> + pallet_authorship::Config
+    {
         /// Consulted on every write: who may publish under a company registration number, does
         /// a schema exist, does a storage endpoint exist. Implemented by
         /// `pallet-pilier-registry`; this pallet never reads that pallet's storage directly.
         type Registry: RegistryAccess<Self::AccountId>;
+
+        /// The fungible token [`PublicationPrice`] is charged in and paid out from. Bound
+        /// through the same `fungible` trait family `pallet_transaction_payment`'s
+        /// `FungibleAdapter` uses for the standard fee, so this pallet withdraws and resolves
+        /// balances the same way the runtime's own fee handler does.
+        type Currency: fungible::Balanced<Self::AccountId>;
+
+        /// Origin allowed to change [`PublicationPrice`] with [`Pallet::set_price`]. This pallet
+        /// does not know about any particular collective directly — wiring this to the
+        /// validators' council is a runtime-integration concern outside this pallet's own
+        /// scope, the same design `pallet-pilier-registry`'s own `AdminOrigin` already uses.
+        type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
         /// Upper bound, in bytes, on a company registration number (for France, a SIREN or
         /// SIRET) — half of a passport's key.
@@ -140,6 +176,12 @@ pub mod pallet {
         /// Weight information for this pallet's dispatchables.
         type WeightInfo: WeightInfo;
     }
+
+    /// The balance type of [`Config::Currency`], derived rather than named directly so a
+    /// runtime only has to say which currency this pallet uses, not repeat its balance type.
+    pub type BalanceOf<T> = <<T as Config>::Currency as fungible::Inspect<
+        <T as frame_system::Config>::AccountId,
+    >>::Balance;
 
     /// A company registration number (for France, a SIREN or SIRET), bounded by
     /// `T::MaxCompanyRegistrationNumberLen`.
@@ -275,6 +317,16 @@ pub mod pallet {
         EventRecord<T>,
     >;
 
+    /// The price charged, in [`Config::Currency`]'s smallest unit, for one call to
+    /// [`Pallet::publish_head`] or [`Pallet::append_event`] — see those calls' own documentation
+    /// for how it is charged and accounted. Changed only by [`Config::AdminOrigin`] through
+    /// [`Pallet::set_price`]. Seeded to its initial value by
+    /// [`crate::migrations::InitializePublicationPrice`] rather than by a genesis config: this
+    /// pallet is expected to arrive on an already-running chain by a forkless runtime upgrade,
+    /// and a genesis config never runs for one.
+    #[pallet::storage]
+    pub type PublicationPrice<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
+
     /// Events that functions in this pallet can emit. Every event names the identifier of the
     /// entity it changed together with the new value of the field that changed, so an observer
     /// can reconstruct the change without reading storage.
@@ -312,6 +364,24 @@ pub mod pallet {
             company_registration_number: CompanyRegistrationNumber<T>,
             gs1_id: Gs1Id<T>,
             index: EventIndex,
+        },
+        /// [`PublicationPrice`] was changed by [`Config::AdminOrigin`] through
+        /// [`Pallet::set_price`].
+        PublicationPriceChanged {
+            old_price: BalanceOf<T>,
+            new_price: BalanceOf<T>,
+        },
+        /// [`PublicationPrice`] was charged for a call to [`Pallet::publish_head`] or
+        /// [`Pallet::append_event`] against the passport named by `company_registration_number`
+        /// and `gs1_id`. `recipient` is the block author `amount` was paid to, or `None` if the
+        /// author could not be determined or the payment could not be resolved to their account
+        /// — in which case `amount` was burned instead, the same crash case the runtime's own
+        /// standard fee handler follows.
+        PublicationPriceCharged {
+            company_registration_number: CompanyRegistrationNumber<T>,
+            gs1_id: Gs1Id<T>,
+            amount: BalanceOf<T>,
+            recipient: Option<T::AccountId>,
         },
     }
 
@@ -430,6 +500,13 @@ pub mod pallet {
         /// — call [`Pallet::republish_head`] instead. `file_fingerprints` is checked and then
         /// discarded: this pallet stores only `body`, never the list, because the body already
         /// carries whatever references to these files its own schema puts there.
+        ///
+        /// Charges [`PublicationPrice`] to the caller — see
+        /// [`Pallet::charge_publication_price`] for how it is charged and accounted — before
+        /// writing anything, so a failure to pay leaves this pallet's storage exactly as it was
+        /// before the call. On success, refunds the standard transaction fee (but not a
+        /// voluntary tip) by returning `Pays::No`; on failure, the standard fee stays charged as
+        /// normal.
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::publish_head())]
         pub fn publish_head(
@@ -439,7 +516,7 @@ pub mod pallet {
             schema_id: SchemaId,
             body: Vec<u8>,
             file_fingerprints: Vec<FileFingerprint>,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             let (company_registration_number, gs1_id, project_id) = Self::authorise_write(
                 &who,
@@ -454,6 +531,8 @@ pub mod pallet {
             );
 
             let body: RecordBody<T> = body.try_into().map_err(|_| Error::<T>::RecordBodyTooLong)?;
+            let (amount, recipient) = Self::charge_publication_price(&who)?;
+
             let published_at = frame_system::Pallet::<T>::block_number();
             Heads::<T>::insert(
                 &company_registration_number,
@@ -469,12 +548,18 @@ pub mod pallet {
             );
 
             Self::deposit_event(Event::HeadPublished {
-                company_registration_number,
-                gs1_id,
+                company_registration_number: company_registration_number.clone(),
+                gs1_id: gs1_id.clone(),
                 project_id,
                 schema_id,
             });
-            Ok(())
+            Self::deposit_event(Event::PublicationPriceCharged {
+                company_registration_number,
+                gs1_id,
+                amount,
+                recipient,
+            });
+            Ok(Pays::No.into())
         }
 
         /// Replace a passport's head record with a new version. This is the only way to change
@@ -549,6 +634,10 @@ pub mod pallet {
         /// not hold the right to write under `company_registration_number`, and with
         /// [`Error::RecordNotFound`] if no head record exists at this key yet — call
         /// [`Pallet::publish_head`] first.
+        ///
+        /// Charges [`PublicationPrice`] to the caller and refunds the standard fee on success,
+        /// exactly as [`Pallet::publish_head`] does — see that call's own documentation and
+        /// [`Pallet::charge_publication_price`].
         #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::append_event())]
         pub fn append_event(
@@ -556,7 +645,7 @@ pub mod pallet {
             company_registration_number: Vec<u8>,
             gs1_id: Vec<u8>,
             body: Vec<u8>,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             let company_registration_number: CompanyRegistrationNumber<T> =
                 company_registration_number
@@ -574,6 +663,8 @@ pub mod pallet {
             );
 
             let body: EventBody<T> = body.try_into().map_err(|_| Error::<T>::EventTooLong)?;
+            let (amount, recipient) = Self::charge_publication_price(&who)?;
+
             let index = EventCounts::<T>::get(&company_registration_number, &gs1_id);
             let recorded_at = frame_system::Pallet::<T>::block_number();
             Events::<T>::insert(
@@ -587,9 +678,32 @@ pub mod pallet {
             );
 
             Self::deposit_event(Event::EventAppended {
+                company_registration_number: company_registration_number.clone(),
+                gs1_id: gs1_id.clone(),
+                index,
+            });
+            Self::deposit_event(Event::PublicationPriceCharged {
                 company_registration_number,
                 gs1_id,
-                index,
+                amount,
+                recipient,
+            });
+            Ok(Pays::No.into())
+        }
+
+        /// Change [`PublicationPrice`], the fixed amount [`Pallet::publish_head`] and
+        /// [`Pallet::append_event`] charge per call. Must be called by [`Config::AdminOrigin`].
+        /// A price of zero is accepted and makes both calls free of this pallet's own charge —
+        /// the standard transaction fee still applies as normal.
+        #[pallet::call_index(4)]
+        #[pallet::weight(T::WeightInfo::set_price())]
+        pub fn set_price(origin: OriginFor<T>, new_price: BalanceOf<T>) -> DispatchResult {
+            T::AdminOrigin::ensure_origin(origin)?;
+            let old_price = PublicationPrice::<T>::get();
+            PublicationPrice::<T>::put(new_price);
+            Self::deposit_event(Event::PublicationPriceChanged {
+                old_price,
+                new_price,
             });
             Ok(())
         }
@@ -628,6 +742,58 @@ pub mod pallet {
             }
 
             Ok((company_registration_number, gs1_id, project_id))
+        }
+
+        /// Withdraw [`PublicationPrice`] from `who` and pay it to the current block's author.
+        /// Returns the amount charged and the account it actually reached — `None` if it was
+        /// burned instead, which happens exactly when the runtime's own standard fee handler
+        /// (`ToAuthor`) would also burn: no block author could be determined, or resolving the
+        /// payment to their account failed (for example because it would leave them below the
+        /// existential deposit and their account does not already exist). Either way the payer
+        /// has already paid, the call proceeds, and the burn is logged as a warning rather than
+        /// silently dropped.
+        ///
+        /// Fails, without withdrawing anything, if `who` does not hold at least
+        /// [`PublicationPrice`]. Callers ([`Pallet::publish_head`], [`Pallet::append_event`])
+        /// call this after every other check has passed and before writing any storage, so a
+        /// failure here leaves the pallet's storage exactly as it was before the call.
+        fn charge_publication_price(
+            who: &T::AccountId,
+        ) -> Result<(BalanceOf<T>, Option<T::AccountId>), DispatchError> {
+            let price = PublicationPrice::<T>::get();
+            let credit = T::Currency::withdraw(
+                who,
+                price,
+                Precision::Exact,
+                Preservation::Preserve,
+                Fortitude::Polite,
+            )?;
+
+            let recipient = match pallet_authorship::Pallet::<T>::author() {
+                Some(author) => match T::Currency::resolve(&author, credit) {
+                    Ok(()) => Some(author),
+                    Err(not_resolved) => {
+                        log::warn!(
+                            target: "runtime::dpp",
+                            "publication price of {:?} could not be resolved to block author \
+                             {:?} (e.g. below the existential deposit) — burned instead of paid",
+                            not_resolved.peek(),
+                            author,
+                        );
+                        None
+                    }
+                },
+                None => {
+                    log::warn!(
+                        target: "runtime::dpp",
+                        "publication price of {:?} burned: no block author found",
+                        credit.peek(),
+                    );
+                    None
+                }
+            };
+
+            Ok((price, recipient))
         }
     }
 }
