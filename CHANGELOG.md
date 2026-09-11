@@ -4,6 +4,17 @@ All notable changes to the Pilier runtime, keyed by runtime `spec_version`. This
 spirit of [Keep a Changelog](https://keepachangelog.com). It records what changed and why for
 node operators and integrators; it deliberately omits internal implementation and decision detail.
 
+## Runtime rollout
+
+Before any runtime upgrade is deployed, the WebAssembly file being rolled out is checked against
+the fingerprint the continuous-integration run published for the same commit, using
+`scripts/verify-runtime-fingerprint.sh`.
+
+That fingerprint is reproducible because the compiler is pinned to an exact version in
+`env-setup/rust-toolchain.toml`, and both the continuous-integration workflow and the deployment
+image build with that version. Building the runtime with a newer compiler produces a different
+file, or fails to link at all.
+
 ## [runtime 102] — 2026-07-19
 
 ### Added

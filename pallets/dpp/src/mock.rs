@@ -112,18 +112,22 @@ pub fn set_block_number(number: frame_system::pallet_prelude::BlockNumberFor<Tes
 pub fn setup_project_with_permission(owner: AccountId, company_registration_number: &[u8]) {
     assert!(Registry::create_project(RuntimeOrigin::root(), owner).is_ok());
     let project_id = pallet_pilier_registry::NextProjectId::<Test>::get() - 1;
-    assert!(Registry::grant_registration_number(
-        RuntimeOrigin::root(),
-        project_id,
-        company_registration_number.to_vec(),
-    )
-    .is_ok());
+    assert!(
+        Registry::grant_registration_number(
+            RuntimeOrigin::root(),
+            project_id,
+            company_registration_number.to_vec(),
+        )
+        .is_ok()
+    );
 }
 
 /// Test fixture: register a schema and return its identifier.
 pub fn register_schema() -> u32 {
     let schema_id = pallet_pilier_registry::NextSchemaId::<Test>::get();
-    assert!(Registry::register_schema(RuntimeOrigin::root(), 1, 1, b"test schema".to_vec()).is_ok());
+    assert!(
+        Registry::register_schema(RuntimeOrigin::root(), 1, 1, b"test schema".to_vec()).is_ok()
+    );
     schema_id
 }
 
@@ -144,11 +148,13 @@ pub fn get_head(
 /// permission for `company_registration_number`.
 pub fn create_storage_endpoint(who: AccountId, company_registration_number: &[u8]) -> u32 {
     let endpoint_id = pallet_pilier_registry::NextStorageEndpointId::<Test>::get();
-    assert!(Registry::create_storage_endpoint(
-        RuntimeOrigin::signed(who),
-        company_registration_number.to_vec(),
-        b"https://storage.pilier.net/dpp/evidence/".to_vec(),
-    )
-    .is_ok());
+    assert!(
+        Registry::create_storage_endpoint(
+            RuntimeOrigin::signed(who),
+            company_registration_number.to_vec(),
+            b"https://storage.pilier.net/dpp/evidence/".to_vec(),
+        )
+        .is_ok()
+    );
     endpoint_id
 }

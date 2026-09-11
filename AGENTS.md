@@ -106,7 +106,9 @@ cargo build --release --features runtime-benchmarks
 
 ## Toolchain
 
-- Rust edition 2024, stable channel. The `wasm32-unknown-unknown` target is required.
+- Rust edition 2024, pinned to an exact compiler version in `env-setup/rust-toolchain.toml`, not
+  to the `stable` channel: a newer compiler fails to link the runtime blob. The
+  `wasm32-unknown-unknown` and `wasm32v1-none` targets and the `rust-src` component are required.
 - The pinned toolchain and components are in `env-setup/rust-toolchain.toml`. The Nix flake in `env-setup/` provides a reproducible dev shell.
 
 ## Chains and genesis

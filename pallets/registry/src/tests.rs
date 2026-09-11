@@ -9,9 +9,9 @@ fn gs1_digital_link_with_batch_and_serial_fits_configured_bound() {
     new_test_ext().execute_with(|| {
         let gs1_digital_link =
             b"https://id.gs1.org/01/09506000134352/10/LOT-2026-04-XY/21/00019283746501".to_vec();
-        let _bounded: crate::Gs1Id<Test> = gs1_digital_link
-            .try_into()
-            .expect("a real GS1 Digital Link with batch and serial number must fit the configured bound");
+        let _bounded: crate::Gs1Id<Test> = gs1_digital_link.try_into().expect(
+            "a real GS1 Digital Link with batch and serial number must fit the configured bound",
+        );
     });
 }
 
@@ -41,10 +41,7 @@ fn foreign_registration_number_cannot_be_used() {
         ));
 
         // Account 1 (project 0's owner) may write under it...
-        assert_eq!(
-            Registry::writer_project(&1, b"552100554"),
-            Some(0)
-        );
+        assert_eq!(Registry::writer_project(&1, b"552100554"), Some(0));
         // ...but account 2 (a different project's owner) may not.
         assert_eq!(Registry::writer_project(&2, b"552100554"), None);
     });
@@ -207,7 +204,8 @@ fn nonexistent_schema_is_rejected() {
 #[test]
 fn schema_description_round_trips_with_matching_fingerprint() {
     new_test_ext().execute_with(|| {
-        let description = br#"{"category":"textile","version":1,"fields":["gtin","batch","serial"]}"#.to_vec();
+        let description =
+            br#"{"category":"textile","version":1,"fields":["gtin","batch","serial"]}"#.to_vec();
 
         assert_ok!(Registry::register_schema(
             RuntimeOrigin::root(),
@@ -272,7 +270,8 @@ fn endpoint_id_unchanged_after_address_replacement() {
             b"https://storage.pilier.net/dpp/evidence/fr/siren/552100554/".to_vec()
         ));
 
-        let new_address = b"https://storage.pilier.net/dpp/evidence/fr/siren/552100554/v2/".to_vec();
+        let new_address =
+            b"https://storage.pilier.net/dpp/evidence/fr/siren/552100554/v2/".to_vec();
         assert_ok!(Registry::update_storage_endpoint_address(
             RuntimeOrigin::signed(1),
             0,
@@ -422,8 +421,7 @@ fn event_composition_for_every_mutating_call() {
         );
 
         // 9. create_storage_endpoint -> StorageEndpointCreated { endpoint_id, company_registration_number, address }
-        let address_bytes =
-            b"https://storage.pilier.net/dpp/evidence/fr/siren/552100554/".to_vec();
+        let address_bytes = b"https://storage.pilier.net/dpp/evidence/fr/siren/552100554/".to_vec();
         assert_ok!(Registry::create_storage_endpoint(
             RuntimeOrigin::signed(1),
             b"552100554".to_vec(),

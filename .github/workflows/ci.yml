@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  checks:
+    name: Workspace checks
+    runs-on: ubuntu-latest
+    # The runtime's build script compiles the WebAssembly blob on every cargo
+    # command that touches the runtime crate. Under `cargo clippy` that inner
+    # build runs through clippy-driver, which emits object files without the
+    # host-function imports the blob needs, and the link fails on every
+    # ext_storage_*/ext_crypto_* symbol. The blob is not what this job checks:
+    # it is built for real, in release, by the runtime-wasm job below.
+    env:
+      SKIP_WASM_BUILD: 1
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libssl-dev llvm libudev-dev protobuf-compiler pkg-config
+
+      - name: Read the pinned toolchain version
+        id: toolchain
+        run: |
+          channel=$(sed -n 's/^channel[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' env-setup/rust-toolchain.toml)
+          if [ -z "$channel" ]; then
+            echo "env-setup/rust-toolchain.toml declares no channel" >&2
+            exit 1
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      - name: Install the pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy, rust-src
+          targets: wasm32-unknown-unknown, wasm32v1-none
+
+      - name: Cache the cargo registry and the build output
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ steps.toolchain.outputs.channel }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ steps.toolchain.outputs.channel }}-
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Static analysis
+        run: cargo clippy --workspace
+
+      - name: Build the workspace
+        run: cargo build --workspace
+
+      - name: Test the workspace
+        run: cargo test --workspace
+
+  runtime-wasm:
+    name: Runtime WebAssembly build
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libssl-dev llvm libudev-dev protobuf-compiler pkg-config
+
+      - name: Read the pinned toolchain version
+        id: toolchain
+        run: |
+          channel=$(sed -n 's/^channel[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' env-setup/rust-toolchain.toml)
+          if [ -z "$channel" ]; then
+            echo "env-setup/rust-toolchain.toml declares no channel" >&2
+            exit 1
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      - name: Install the pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rust-src
+          targets: wasm32-unknown-unknown, wasm32v1-none
+
+      - name: Cache the cargo registry and the release build output
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ steps.toolchain.outputs.channel }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-${{ steps.toolchain.outputs.channel }}-
+
+      - name: Build the runtime WebAssembly blob
+        run: cargo build --release -p pilier-runtime
+
+      - name: Locate the compact compressed blob and record its fingerprint
+        run: |
+          set -e
+          wasm_path=$(find target/release/wbuild -name '*.compact.compressed.wasm' | head -n1)
+          if [ -z "$wasm_path" ]; then
+            echo "no compact compressed runtime blob found under target/release/wbuild" >&2
+            exit 1
+          fi
+          mkdir -p runtime-artifact
+          cp "$wasm_path" runtime-artifact/runtime.compact.compressed.wasm
+          sha256sum runtime-artifact/runtime.compact.compressed.wasm \
+            | awk '{print $1}' > runtime-artifact/runtime.compact.compressed.wasm.sha256
+          cat runtime-artifact/runtime.compact.compressed.wasm.sha256
+
+      - name: Publish the runtime blob and its fingerprint
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime-wasm
+          path: runtime-artifact/
