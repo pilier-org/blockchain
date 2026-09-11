@@ -15,6 +15,19 @@ That fingerprint is reproducible because the compiler is pinned to an exact vers
 image build with that version. Building the runtime with a newer compiler produces a different
 file, or fails to link at all.
 
+## [runtime 103] — 2026-09-11
+
+### Added
+- **Product registry and digital product passport pallets are now live on-chain.** Two new
+  pallets join the runtime: a registry that projects use to record their company registration
+  number, GS1 product identifiers, reference schemas and storage endpoints, and a digital
+  product passport pallet that publishes passport records and events against those registered
+  products. Administrative calls on both — granting registry permissions and changing the
+  passport publication price — are governed the same way validator changes already are: a
+  supermajority (at least 75%) vote of the validators' council, with the root key retained as an
+  emergency override. The publication price itself starts at the value set by this upgrade and
+  can be changed later by the same council vote, without a further runtime upgrade.
+
 ## [runtime 102] — 2026-07-19
 
 ### Added

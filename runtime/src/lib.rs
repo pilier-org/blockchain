@@ -63,7 +63,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: alloc::borrow::Cow::Borrowed("pilier-runtime"),
     impl_name: alloc::borrow::Cow::Borrowed("pilier-runtime"),
     authoring_version: 1,
-    spec_version: 102,
+    spec_version: 103,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -128,8 +128,13 @@ pub type UncheckedExtrinsic =
 
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, TxExtension>;
 
+// `InitializePublicationPrice` is a `VersionedMigration<0, 1, ..>`: it only ever runs once, the
+// first time this runtime's own executive observes `pallet-pilier-dpp` at on-chain storage
+// version 0 — exactly the state a pallet arrives in the moment it is first declared below, since
+// it carries no genesis config of its own. Omitting it here would leave `PublicationPrice` at its
+// `ValueQuery` default of zero forever: nothing else in this runtime ever seeds it.
 #[allow(unused_parens)]
-type Migrations = ();
+type Migrations = (pallet_pilier_dpp::migrations::InitializePublicationPrice<Runtime>,);
 
 pub type Executive = frame_executive::Executive<
     Runtime,
@@ -206,6 +211,19 @@ mod runtime {
     // index 10 (after Council) is safe.
     #[runtime::pallet_index(10)]
     pub type Authorship = pallet_authorship;
+
+    // `pallet-pilier-registry` and `pallet-pilier-dpp` are appended here, after every
+    // previously occupied index (0 through 10) and never reordered among themselves or against
+    // an existing pallet: a pallet's index is part of the chain's wire format. Neither carries a
+    // genesis config of its own — both start empty, and `pallet-pilier-dpp`'s
+    // `PublicationPrice` is seeded by `InitializePublicationPrice` above, not by genesis — so
+    // unlike `ValidatorSet`/`Session`, neither has an ordering dependency on the other or on any
+    // pallet above.
+    #[runtime::pallet_index(11)]
+    pub type Registry = pallet_pilier_registry;
+
+    #[runtime::pallet_index(12)]
+    pub type Dpp = pallet_pilier_dpp;
 }
 
 // Re-export types for node (add at end of file, after construct_runtime)

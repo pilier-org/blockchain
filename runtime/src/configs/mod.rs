@@ -8,7 +8,8 @@ use alloc::vec;
 use frame_support::{
     parameter_types,
     traits::{
-        ConstBool, ConstU8, ConstU32, ConstU64, ConstU128, Imbalance, OnUnbalanced, VariantCountOf,
+        ConstBool, ConstU8, ConstU32, ConstU64, ConstU128, EitherOfDiverse, Imbalance,
+        OnUnbalanced, VariantCountOf,
         fungible::{Balanced, Credit},
     },
     weights::{
@@ -27,13 +28,23 @@ use crate::MICRO_UNIT;
 // Local module imports from lib.rs
 use super::{
     AccountId, Aura, Balance, Balances, Block, BlockNumber, Council, EXISTENTIAL_DEPOSIT, Hash,
-    Nonce, Runtime, RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason,
+    Nonce, Registry, Runtime, RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason,
     RuntimeOrigin, RuntimeTask, SLOT_DURATION, SessionKeys, System, VERSION, ValidatorSet,
 };
 
 /// The council's `pallet-collective` instance. A type alias only — `pallet_collective::Instance1`
 /// is used directly, there being exactly one collective in this runtime for now.
 type CouncilCollective = pallet_collective::Instance1;
+
+/// The administrative origin shared by every pallet whose calls the validators' council governs:
+/// root (Sudo, an emergency lever) or a council supermajority of at least 75%
+/// (`EnsureProportionAtLeast<.., 3, 4>`). Mirrors `pallet_validator_set::Config::AddRemoveOrigin`
+/// exactly, so a council vote that can add or remove a validator can, at the same threshold,
+/// grant a registry permission or change the passport publication price.
+type CouncilOrRoot = EitherOfDiverse<
+    frame_system::EnsureRoot<AccountId>,
+    pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>,
+>;
 
 /// We allow for 75% of the block to be occupied by Normal transactions.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
@@ -219,12 +230,88 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
 /// council votes.
 impl pallet_validator_set::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type AddRemoveOrigin = frame_support::traits::EitherOfDiverse<
-        frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>,
-    >;
+    type AddRemoveOrigin = CouncilOrRoot;
     type MembershipChanged = Council;
     type MinValidators = ConstU32<1>;
+    type WeightInfo = ();
+}
+
+parameter_types! {
+    /// Upper bound, in bytes, on a company registration number (for France, a SIREN or SIRET).
+    /// Shared with `pallet-pilier-dpp` below, whose own bound of the same name must carry the
+    /// same value: a passport's key is half this registration number and half a GS1 identifier,
+    /// both issued through this pallet, so the two pallets disagreeing here would let a project
+    /// be registered under a number no passport could ever be published against.
+    pub const MaxCompanyRegistrationNumberLen: u32 = 32;
+    /// Upper bound, in bytes, on a GS1 identifier written as a full GS1 Digital Link. Shared with
+    /// `pallet-pilier-dpp` below for the same reason as `MaxCompanyRegistrationNumberLen`.
+    pub const MaxGs1IdLen: u32 = 128;
+    /// Upper bound, in bytes, on a code registry's name.
+    pub const MaxRegistryTypeNameLen: u32 = 64;
+    /// Upper bound, in bytes, on one code registry entry's value.
+    pub const MaxRegistryEntryValueLen: u32 = 256;
+    /// Upper bound, in bytes, on a storage endpoint's common address part.
+    pub const MaxStorageEndpointAddressLen: u32 = 256;
+    /// Upper bound, in bytes, on a schema's description, stored on chain in full.
+    pub const MaxSchemaDescriptionLen: u32 = 16 * 1024;
+    /// Upper bound on the number of accounts, besides a project's owner, allowed to write on its
+    /// behalf.
+    pub const MaxProjectWriters: u32 = 32;
+}
+
+/// Registry configuration. `AdminOrigin` is the same "council supermajority, or root as an
+/// emergency lever" composition `pallet_validator_set::Config::AddRemoveOrigin` already uses
+/// above — the validators' council administers the registry exactly as it administers the
+/// validator set itself. Every length bound is named in the `parameter_types!` block above,
+/// carrying its own figure and the rationale for it (`ai/decisions/passport-pallet-runtime-bounds.md`
+/// for the two shared with `pallet-pilier-dpp`).
+impl pallet_pilier_registry::Config for Runtime {
+    type AdminOrigin = CouncilOrRoot;
+    type MaxCompanyRegistrationNumberLen = MaxCompanyRegistrationNumberLen;
+    type MaxGs1IdLen = MaxGs1IdLen;
+    type MaxRegistryTypeNameLen = MaxRegistryTypeNameLen;
+    type MaxRegistryEntryValueLen = MaxRegistryEntryValueLen;
+    type MaxStorageEndpointAddressLen = MaxStorageEndpointAddressLen;
+    type MaxSchemaDescriptionLen = MaxSchemaDescriptionLen;
+    type MaxProjectWriters = MaxProjectWriters;
+    type WeightInfo = ();
+}
+
+parameter_types! {
+    /// Upper bound, in bytes, on a head record's body.
+    pub const MaxRecordBodyLen: u32 = 4 * 1024;
+    /// Upper bound, in bytes, on one lifecycle event's body.
+    pub const MaxEventLen: u32 = 128;
+    /// Upper bound, in bytes, on an evidence file's path remainder.
+    pub const MaxFilePathLen: u32 = 256;
+    /// Upper bound, in bytes, on an evidence file's content type (for example, a MIME type). 128
+    /// bytes, not the 64 the pallet's own mock once used for its tests: a MIME type as ordinary
+    /// as Microsoft Excel's
+    /// (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, 65 bytes), Word's
+    /// (71 bytes) or PowerPoint's (73 bytes) already exceeds 64 bytes on its own, before even a
+    /// `; charset=utf-8` parameter is added. See `ai/decisions/passport-pallet-runtime-bounds.md`.
+    pub const MaxFileContentTypeLen: u32 = 128;
+}
+
+/// Passport configuration. `Registry` and `AdminOrigin` mirror the registry pallet's own wiring
+/// immediately above: the same pallet answers every permission and existence question a
+/// publication depends on, and the same council-or-root origin changes the publication price by
+/// vote (`Pallet::set_price`) that `pallet_validator_set::Config::AddRemoveOrigin` uses to change
+/// the validator set — no runtime upgrade is needed to move the price. `Currency = Balances` is
+/// the same fungible balance every other pallet in this runtime charges against; the price is
+/// paid to the current block's author (or burned, in the rare case no author can be resolved —
+/// see `Pallet::charge_publication_price`'s own documentation), the same destination
+/// `ToAuthor` routes the standard transaction fee to below.
+impl pallet_pilier_dpp::Config for Runtime {
+    type Registry = Registry;
+    type Currency = Balances;
+    type AdminOrigin = CouncilOrRoot;
+    type MaxCompanyRegistrationNumberLen = MaxCompanyRegistrationNumberLen;
+    type MaxGs1IdLen = MaxGs1IdLen;
+    type MaxRecordBodyLen = MaxRecordBodyLen;
+    type MaxEventLen = MaxEventLen;
+    type MaxFilePathLen = MaxFilePathLen;
+    type MaxFileContentTypeLen = MaxFileContentTypeLen;
     type WeightInfo = ();
 }
 

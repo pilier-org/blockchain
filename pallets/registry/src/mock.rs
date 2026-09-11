@@ -40,7 +40,7 @@ impl frame_system::Config for Test {
 }
 
 parameter_types! {
-    /// The six bounds below mirror the pallet's own bounds exactly, so a test that
+    /// The seven bounds below mirror the pallet's own bounds exactly, so a test that
     /// exercises the configured bound is exercising the real limit, not a stand-in for it.
     pub const MaxCompanyRegistrationNumberLen: u32 = 32;
     pub const MaxGs1IdLen: u32 = 128;
@@ -48,6 +48,7 @@ parameter_types! {
     pub const MaxRegistryEntryValueLen: u32 = 256;
     pub const MaxStorageEndpointAddressLen: u32 = 256;
     pub const MaxSchemaDescriptionLen: u32 = 16 * 1024;
+    pub const MaxProjectWriters: u32 = 32;
 }
 
 impl pallet_pilier_registry::Config for Test {
@@ -62,6 +63,7 @@ impl pallet_pilier_registry::Config for Test {
     type MaxRegistryEntryValueLen = MaxRegistryEntryValueLen;
     type MaxStorageEndpointAddressLen = MaxStorageEndpointAddressLen;
     type MaxSchemaDescriptionLen = MaxSchemaDescriptionLen;
+    type MaxProjectWriters = MaxProjectWriters;
     type WeightInfo = ();
 }
 

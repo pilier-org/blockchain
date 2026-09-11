@@ -91,6 +91,7 @@ parameter_types! {
     pub const MaxRegistryEntryValueLen: u32 = 256;
     pub const MaxStorageEndpointAddressLen: u32 = 256;
     pub const MaxSchemaDescriptionLen: u32 = 16 * 1024;
+    pub const MaxProjectWriters: u32 = 32;
 }
 
 impl pallet_pilier_registry::Config for Test {
@@ -101,6 +102,7 @@ impl pallet_pilier_registry::Config for Test {
     type MaxRegistryEntryValueLen = MaxRegistryEntryValueLen;
     type MaxStorageEndpointAddressLen = MaxStorageEndpointAddressLen;
     type MaxSchemaDescriptionLen = MaxSchemaDescriptionLen;
+    type MaxProjectWriters = MaxProjectWriters;
     type WeightInfo = ();
 }
 
@@ -194,7 +196,7 @@ parameter_types! {
     pub const MaxRecordBodyLen: u32 = 4 * 1024;
     pub const MaxEventLen: u32 = 128;
     pub const MaxFilePathLen: u32 = 256;
-    pub const MaxFileContentTypeLen: u32 = 64;
+    pub const MaxFileContentTypeLen: u32 = 128;
 }
 
 impl pallet_pilier_dpp::Config for Test {

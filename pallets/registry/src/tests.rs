@@ -26,6 +26,28 @@ fn storage_endpoint_address_fits_configured_bound() {
     });
 }
 
+/// A writer list longer than the configured 32-account bound is rejected, and the
+/// project's stored writer list is left untouched.
+#[test]
+fn writer_list_exceeding_configured_bound_is_rejected() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        let too_many_writers: Vec<u64> = (0..33).collect();
+        assert_noop!(
+            Registry::set_project_writers(RuntimeOrigin::root(), 0, too_many_writers),
+            Error::<Test>::TooManyWriters
+        );
+
+        let exactly_the_bound: Vec<u64> = (0..32).collect();
+        assert_ok!(Registry::set_project_writers(
+            RuntimeOrigin::root(),
+            0,
+            exactly_the_bound
+        ));
+    });
+}
+
 /// An account belonging to a project that was never granted a given company
 /// registration number cannot write under it: `RegistryAccess::writer_project` returns `None`.
 #[test]
@@ -311,10 +333,11 @@ fn event_composition_for_every_mutating_call() {
             0,
             vec![2]
         ));
+        let project_writers: crate::ProjectWriters<Test> = vec![2].try_into().unwrap();
         System::assert_last_event(
             Event::ProjectWritersUpdated {
                 project_id: 0,
-                writers: vec![2],
+                writers: project_writers,
             }
             .into(),
         );

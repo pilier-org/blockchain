@@ -6731,6 +6731,8 @@ dependencies = [
  "pallet-balances",
  "pallet-collective",
  "pallet-grandpa",
+ "pallet-pilier-dpp",
+ "pallet-pilier-registry",
  "pallet-session",
  "pallet-sudo",
  "pallet-timestamp",

@@ -16,7 +16,7 @@ codec = { workspace = true }
 scale-info = { features = ["derive", "serde"], workspace = true }
 serde_json = { workspace = true, default-features = false, features = ["alloc"] }
 
-frame-benchmarking = { workspace = true, optional = true } 
+frame-benchmarking = { workspace = true, optional = true }
 frame-system-benchmarking = { workspace = true, optional = true }
 
 # FRAME core
@@ -31,6 +31,8 @@ pallet-authorship.workspace = true
 pallet-balances.workspace = true
 pallet-collective.workspace = true
 pallet-grandpa.workspace = true
+pallet-pilier-dpp = { path = "../pallets/dpp", default-features = false }
+pallet-pilier-registry = { path = "../pallets/registry", default-features = false }
 pallet-session.workspace = true
 pallet-sudo.workspace = true
 pallet-timestamp.workspace = true
@@ -68,7 +70,7 @@ default = ["std"]
 std = [
   "codec/std",
   "frame-executive/std",
-  "frame-benchmarking/std", 
+  "frame-benchmarking/std",
   "frame-system-benchmarking/std",
   "frame-metadata-hash-extension/std",
   "frame-support/std",
@@ -80,6 +82,8 @@ std = [
   "pallet-balances/std",
   "pallet-collective/std",
   "pallet-grandpa/std",
+  "pallet-pilier-dpp/std",
+  "pallet-pilier-registry/std",
   "pallet-session/std",
   "pallet-sudo/std",
   "pallet-timestamp/std",
@@ -116,6 +120,8 @@ runtime-benchmarks = [
 	"frame-system/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
 	"pallet-collective/runtime-benchmarks",
+	"pallet-pilier-dpp/runtime-benchmarks",
+	"pallet-pilier-registry/runtime-benchmarks",
 	"pallet-session/runtime-benchmarks",
 	"pallet-timestamp/runtime-benchmarks",
 	"pallet-sudo/runtime-benchmarks",
@@ -133,6 +139,8 @@ try-runtime = [
 	"pallet-balances/try-runtime",
 	"pallet-collective/try-runtime",
 	"pallet-grandpa/try-runtime",
+	"pallet-pilier-dpp/try-runtime",
+	"pallet-pilier-registry/try-runtime",
 	"pallet-session/try-runtime",
 	"pallet-sudo/try-runtime",
 	"pallet-timestamp/try-runtime",

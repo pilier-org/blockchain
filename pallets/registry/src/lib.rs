@@ -138,18 +138,16 @@ pub mod pallet {
 
     /// The pallet's placeholder struct, used to implement traits, methods and dispatchables.
     ///
-    /// `without_storage_info` is required because [`ProjectInfo::writers`] stores a plain,
-    /// unbounded `Vec` rather than a `BoundedVec` — the same trade-off `pallet-validator-set`
-    /// already makes in this codebase for its own admin/council-controlled account list, and
-    /// for the same reason: there is no hard cap on how many accounts a project designates as
-    /// writers, and this pallet is not used with storage-info-driven tooling.
+    /// Every storage value in this pallet has a known maximum encoded length: the project's
+    /// writer list is bounded by `T::MaxProjectWriters`, and every other variable-length field is
+    /// already a `BoundedVec` sized by its own `Config` constant. The pallet is therefore used
+    /// with storage-info-driven tooling rather than opting out of it.
     #[pallet::pallet]
-    #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
     /// The pallet's configuration trait.
     ///
-    /// The six length bounds below are named as parameters, taken from measured figures
+    /// The seven length bounds below are named as parameters, taken from measured figures
     /// rather than guessed, precisely so the limit is not a number an implementer happens to pick: a chain
     /// running with a bound too small would reject real data on a live chain, where the type
     /// cannot be changed without a runtime upgrade.
@@ -193,6 +191,13 @@ pub mod pallet {
         #[pallet::constant]
         type MaxSchemaDescriptionLen: Get<u32>;
 
+        /// Upper bound on the number of accounts, besides a project's owner, allowed to write on
+        /// its behalf. Without this bound the list has no known maximum encoded length, which
+        /// makes the weight of a call that writes it impossible to compute and its price stop
+        /// depending on how much work it does.
+        #[pallet::constant]
+        type MaxProjectWriters: Get<u32>;
+
         /// Weight information for this pallet's dispatchables.
         type WeightInfo: super::WeightInfo;
     }
@@ -220,18 +225,31 @@ pub mod pallet {
     /// A schema's description, stored on chain in full, bounded by `T::MaxSchemaDescriptionLen`.
     pub type SchemaDescription<T> = BoundedVec<u8, <T as Config>::MaxSchemaDescriptionLen>;
 
+    /// Accounts, besides a project's owner, allowed to write on its behalf, bounded by
+    /// `T::MaxProjectWriters`.
+    pub type ProjectWriters<T> =
+        BoundedVec<<T as frame_system::Config>::AccountId, <T as Config>::MaxProjectWriters>;
+
     /// A project: an owner account and the accounts allowed to write on the project's behalf
     /// (add code registry entries, create and update storage endpoints). The owner is always
     /// implicitly a writer; `writers` holds the accounts added on top of the owner.
     #[derive(
-        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+        CloneNoBound,
+        PartialEqNoBound,
+        EqNoBound,
+        Encode,
+        Decode,
+        MaxEncodedLen,
+        TypeInfo,
+        RuntimeDebugNoBound,
     )]
+    #[codec(mel_bound(T: Config))]
     #[scale_info(skip_type_params(T))]
     pub struct ProjectInfo<T: Config> {
         /// The account that owns the project.
         pub owner: T::AccountId,
         /// Accounts, besides the owner, allowed to write on the project's behalf.
-        pub writers: Vec<T::AccountId>,
+        pub writers: ProjectWriters<T>,
     }
 
     /// The next `ProjectId` to assign. Starts at zero and is incremented on every
@@ -255,8 +273,16 @@ pub mod pallet {
     /// A code registry: a short-number-to-string lookup table, plus which project is allowed to
     /// add entries to it and how many numbers it has issued so far.
     #[derive(
-        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+        CloneNoBound,
+        PartialEqNoBound,
+        EqNoBound,
+        Encode,
+        Decode,
+        MaxEncodedLen,
+        TypeInfo,
+        RuntimeDebugNoBound,
     )]
+    #[codec(mel_bound(T: Config))]
     #[scale_info(skip_type_params(T))]
     pub struct RegistryTypeInfo<T: Config> {
         /// The registry's name (for example, "ISO 3166-1 country codes").
@@ -271,8 +297,16 @@ pub mod pallet {
     /// One entry inside a code registry: the string a short number stands for, and whether it
     /// has been marked deprecated. An entry is never deleted — see [`Pallet::deprecate_registry_entry`].
     #[derive(
-        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+        CloneNoBound,
+        PartialEqNoBound,
+        EqNoBound,
+        Encode,
+        Decode,
+        MaxEncodedLen,
+        TypeInfo,
+        RuntimeDebugNoBound,
     )]
+    #[codec(mel_bound(T: Config))]
     #[scale_info(skip_type_params(T))]
     pub struct RegistryEntryInfo<T: Config> {
         /// The string this entry's short number stands for.
@@ -309,8 +343,16 @@ pub mod pallet {
     /// `fingerprint` is only an integrity check — it lets someone who already has the
     /// description confirm it was not altered — never the sole record of the schema.
     #[derive(
-        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+        CloneNoBound,
+        PartialEqNoBound,
+        EqNoBound,
+        Encode,
+        Decode,
+        MaxEncodedLen,
+        TypeInfo,
+        RuntimeDebugNoBound,
     )]
+    #[codec(mel_bound(T: Config))]
     #[scale_info(skip_type_params(T))]
     pub struct SchemaInfo<T: Config> {
         /// The product category this schema describes (an application-defined classifier
@@ -341,8 +383,16 @@ pub mod pallet {
     /// whose registration number's grant has since moved on leaves its past addresses only in
     /// this pallet's event log, which a node with pruned history does not keep.
     #[derive(
-        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+        CloneNoBound,
+        PartialEqNoBound,
+        EqNoBound,
+        Encode,
+        Decode,
+        MaxEncodedLen,
+        TypeInfo,
+        RuntimeDebugNoBound,
     )]
+    #[codec(mel_bound(T: Config))]
     #[scale_info(skip_type_params(T))]
     pub struct StorageEndpointInfo<T: Config> {
         /// The company registration number this endpoint was created under.
@@ -375,7 +425,7 @@ pub mod pallet {
         /// A project's writer list was replaced.
         ProjectWritersUpdated {
             project_id: ProjectId,
-            writers: Vec<T::AccountId>,
+            writers: ProjectWriters<T>,
         },
         /// A project was granted the right to write under a company registration number.
         RegistrationNumberGranted {
@@ -430,6 +480,8 @@ pub mod pallet {
     pub enum Error<T> {
         /// No project exists with the given identifier.
         ProjectNotFound,
+        /// The writer list does not fit `T::MaxProjectWriters`.
+        TooManyWriters,
         /// The company registration number does not fit `T::MaxCompanyRegistrationNumberLen`.
         RegistrationNumberTooLong,
         /// The company registration number is already granted to a project.
@@ -478,7 +530,7 @@ pub mod pallet {
                 project_id,
                 ProjectInfo {
                     owner: owner.clone(),
-                    writers: Vec::new(),
+                    writers: ProjectWriters::<T>::default(),
                 },
             );
 
@@ -490,7 +542,8 @@ pub mod pallet {
         /// regardless of what this list contains.
         ///
         /// Must be called by `T::AdminOrigin`. Fails with [`Error::ProjectNotFound`] if
-        /// `project_id` does not name an existing project.
+        /// `project_id` does not name an existing project, and with [`Error::TooManyWriters`] if
+        /// `writers` does not fit `T::MaxProjectWriters`.
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::set_project_writers())]
         pub fn set_project_writers(
@@ -499,6 +552,9 @@ pub mod pallet {
             writers: Vec<T::AccountId>,
         ) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
+
+            let writers: ProjectWriters<T> =
+                writers.try_into().map_err(|_| Error::<T>::TooManyWriters)?;
 
             Projects::<T>::try_mutate(project_id, |maybe_project| -> DispatchResult {
                 let project = maybe_project.as_mut().ok_or(Error::<T>::ProjectNotFound)?;

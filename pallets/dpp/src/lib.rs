@@ -96,13 +96,12 @@ pub mod pallet {
 
     /// The pallet's placeholder struct, used to implement traits, methods and dispatchables.
     ///
-    /// `without_storage_info` is required because the file, head and event bodies below are
-    /// each a `BoundedVec` whose bound is a `Config` constant, but the pallet as a whole is not
-    /// used with storage-info-driven tooling — the same trade-off `pallet-pilier-registry`
-    /// already makes in this codebase.
+    /// Every stored value here has a compile-time upper bound: each body and address is a
+    /// `BoundedVec` whose bound is a `Config` constant, so the automatic storage-size
+    /// calculation works and is kept on. Turning it off would hide an unbounded value from the
+    /// tooling that exists to catch one.
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
-    #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
     /// This pallet's on-chain storage version. Raised from 0 to 1 by
@@ -213,8 +212,16 @@ pub mod pallet {
     /// while handling that call, and it is what a reader who does not trust the caller can check
     /// against the chain.
     #[derive(
-        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+        CloneNoBound,
+        PartialEqNoBound,
+        EqNoBound,
+        Encode,
+        Decode,
+        MaxEncodedLen,
+        TypeInfo,
+        RuntimeDebugNoBound,
     )]
+    #[codec(mel_bound(T: Config))]
     #[scale_info(skip_type_params(T))]
     pub struct EventRecord<T: Config> {
         /// The event's body — an opaque byte string this pallet never parses.
@@ -226,8 +233,16 @@ pub mod pallet {
     /// One entry in the deduplicated file table: where an evidence file lives and what it is,
     /// keyed in storage by its content fingerprint.
     #[derive(
-        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+        CloneNoBound,
+        PartialEqNoBound,
+        EqNoBound,
+        Encode,
+        Decode,
+        MaxEncodedLen,
+        TypeInfo,
+        RuntimeDebugNoBound,
     )]
+    #[codec(mel_bound(T: Config))]
     #[scale_info(skip_type_params(T))]
     pub struct FileInfo<T: Config> {
         /// The storage endpoint this file's address is relative to.
@@ -254,8 +269,16 @@ pub mod pallet {
     /// the body [`Pallet::republish_head`] replaced — that prior body is not kept in this
     /// pallet's storage, only in the block that published it.
     #[derive(
-        CloneNoBound, PartialEqNoBound, EqNoBound, Encode, Decode, TypeInfo, RuntimeDebugNoBound,
+        CloneNoBound,
+        PartialEqNoBound,
+        EqNoBound,
+        Encode,
+        Decode,
+        MaxEncodedLen,
+        TypeInfo,
+        RuntimeDebugNoBound,
     )]
+    #[codec(mel_bound(T: Config))]
     #[scale_info(skip_type_params(T))]
     pub struct HeadRecord<T: Config> {
         /// The schema this body is written against, registered in `pallet-pilier-registry`.
