@@ -49,8 +49,9 @@ use sp_runtime::{
 
 use crate::{
     AccountId, AccountPublic, AuraId, Balance, BalancesConfig, BuildStorage, Council,
-    CouncilConfig, GrandpaId, Runtime, RuntimeCall, RuntimeEvent, RuntimeGenesisConfig,
-    RuntimeOrigin, Session, SessionKeys, Sudo, SudoConfig, System, UNIT, ValidatorSet,
+    CouncilConfig, Dpp, GrandpaId, Registry, Runtime, RuntimeCall, RuntimeEvent,
+    RuntimeGenesisConfig, RuntimeOrigin, Session, SessionKeys, Sudo, SudoConfig, System, UNIT,
+    ValidatorSet,
 };
 
 /// Derives a deterministic keypair from a `//<seed>` derivation path — the same scheme
@@ -516,5 +517,91 @@ fn plain_signed_origin_is_rejected() {
             pallet_validator_set::Validators::<Runtime>::get(),
             alloc::vec![v1.0.clone(), v2.0.clone(), v3.0.clone()]
         );
+    });
+}
+
+/// A runtime upgrade that declares new pallets must not change how the pallets that were
+/// already live behave. `pallet-pilier-registry` and `pallet-pilier-dpp` were appended to this
+/// runtime after `ValidatorSet`/`Session`/`Council` were already live; this test runs the same
+/// "root adds a validator directly" path `root_adds_a_validator_directly_bypassing_the_council`
+/// proves above, in the same externalities where a project, a schema and a passport head record
+/// are also created through the two newly declared pallets, and checks that neither path's own
+/// result moved because the other pallet is also compiled into this runtime.
+#[test]
+fn preexisting_validator_set_call_and_newly_declared_registry_dpp_calls_coexist_in_one_runtime() {
+    let v1 = validator_keys_from_seed("Val1");
+    let v2 = validator_keys_from_seed("Val2");
+    let v3 = validator_keys_from_seed("Val3");
+    let root = get_account_id_from_seed::<sr25519::Public>("Root");
+    let candidate = get_account_id_from_seed::<sr25519::Public>("Candidate");
+    let publisher = get_account_id_from_seed::<sr25519::Public>("Publisher");
+
+    let mut ext = new_test_ext(
+        &[v1.clone(), v2.clone(), v3.clone()],
+        &root,
+        &[candidate.clone(), publisher.clone()],
+    );
+
+    ext.execute_with(|| {
+        System::set_block_number(1);
+
+        // The pre-existing path, unchanged from `root_adds_a_validator_directly_bypassing_the_council`
+        // above: root adds a validator directly, the "root as an emergency lever" half of
+        // `AddRemoveOrigin`.
+        assert_ok!(Sudo::sudo(
+            RuntimeOrigin::signed(root.clone()),
+            Box::new(RuntimeCall::ValidatorSet(
+                pallet_validator_set::Call::add_validator {
+                    who: candidate.clone(),
+                }
+            )),
+        ));
+        assert_same_members(
+            pallet_validator_set::Validators::<Runtime>::get(),
+            &[v1.0.clone(), v2.0.clone(), v3.0.clone(), candidate.clone()],
+        );
+
+        // The newly declared path, in the same externalities: create a project, grant it a
+        // registration number, register a schema, and publish a passport head record through it.
+        assert_ok!(Registry::create_project(
+            RuntimeOrigin::root(),
+            publisher.clone()
+        ));
+        assert_ok!(Registry::grant_registration_number(
+            RuntimeOrigin::root(),
+            0,
+            b"552100554".to_vec(),
+        ));
+        assert_ok!(Registry::register_schema(
+            RuntimeOrigin::root(),
+            1,
+            1,
+            b"{\"fields\":[]}".to_vec(),
+        ));
+        assert_ok!(Dpp::publish_head(
+            RuntimeOrigin::signed(publisher.clone()),
+            b"552100554".to_vec(),
+            b"https://id.gs1.org/01/09506000134352".to_vec(),
+            0,
+            b"passport body".to_vec(),
+            alloc::vec::Vec::new(),
+        ));
+
+        // Neither call's own outcome moved: the validator set still carries exactly the four
+        // accounts the sudo call above produced, and the passport reads back exactly as
+        // published.
+        assert_same_members(
+            pallet_validator_set::Validators::<Runtime>::get(),
+            &[v1.0.clone(), v2.0.clone(), v3.0.clone(), candidate.clone()],
+        );
+        let company: pallet_pilier_dpp::CompanyRegistrationNumber<Runtime> =
+            b"552100554".to_vec().try_into().unwrap();
+        let gs1: pallet_pilier_dpp::Gs1Id<Runtime> = b"https://id.gs1.org/01/09506000134352"
+            .to_vec()
+            .try_into()
+            .unwrap();
+        let head = pallet_pilier_dpp::Heads::<Runtime>::get(&company, &gs1)
+            .expect("head record must have been published");
+        assert_eq!(&head.body[..], b"passport body");
     });
 }
