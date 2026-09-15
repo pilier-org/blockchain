@@ -188,8 +188,8 @@ Validator operators are expected to run the node in Docker, not from a local bui
 This repository is public, and its history is part of what it shows. Every commit message
 follows these rules.
 
-- **Conventional Commits, in English.** `type(scope): imperative summary`, with the types this
-  project uses being `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `build` and `ci`. The
+- **Types and scopes.** The types this
+  project uses are `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `build` and `ci`. The
   scope is the pallet or the area — `dpp`, `registry`, `runtime`, `node`, `deployment`.
 - **The body explains why, not what.** The diff already says what changed. The body says what
   was wrong before, what the change does about it, and what it deliberately leaves alone. End it
