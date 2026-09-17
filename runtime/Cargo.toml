@@ -38,6 +38,7 @@ pallet-sudo.workspace = true
 pallet-timestamp.workspace = true
 pallet-transaction-payment.workspace = true
 pallet-validator-set = { path = "../pallets/validator-set", default-features = false }
+pallet-runtime-upgrade = { path = "../pallets/runtime-upgrade", default-features = false }
 
 # Logging for edge cases (e.g. a fee burned in `ToAuthor`)
 log.workspace = true
@@ -90,6 +91,7 @@ std = [
   "pallet-transaction-payment-rpc-runtime-api/std",
   "pallet-transaction-payment/std",
   "pallet-validator-set/std",
+  "pallet-runtime-upgrade/std",
   "scale-info/std",
   "serde_json/std",
   "sp-api/std",
@@ -127,6 +129,7 @@ runtime-benchmarks = [
 	"pallet-sudo/runtime-benchmarks",
 	"pallet-transaction-payment/runtime-benchmarks",
 	"pallet-validator-set/runtime-benchmarks",
+	"pallet-runtime-upgrade/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
 ]
 
@@ -146,5 +149,6 @@ try-runtime = [
 	"pallet-timestamp/try-runtime",
 	"pallet-transaction-payment/try-runtime",
 	"pallet-validator-set/try-runtime",
+	"pallet-runtime-upgrade/try-runtime",
 	"sp-runtime/try-runtime",
 ]

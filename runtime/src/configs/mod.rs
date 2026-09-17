@@ -38,10 +38,10 @@ type CouncilCollective = pallet_collective::Instance1;
 
 /// The administrative origin shared by every pallet whose calls the validators' council governs:
 /// root (Sudo, an emergency lever) or a council supermajority of at least 75%
-/// (`EnsureProportionAtLeast<.., 3, 4>`). Mirrors `pallet_validator_set::Config::AddRemoveOrigin`
-/// exactly, so a council vote that can add or remove a validator can, at the same threshold,
-/// grant a registry permission or change the passport publication price.
-type CouncilOrRoot = EitherOfDiverse<
+/// (`EnsureProportionAtLeast<.., 3, 4>`). One named definition rather than four inlined copies:
+/// the same origin adds or removes a validator, authorises a runtime upgrade, grants a registry
+/// permission and changes the passport publication price, all at the same threshold.
+pub type CouncilOrRoot = EitherOfDiverse<
     frame_system::EnsureRoot<AccountId>,
     pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>,
 >;
@@ -232,6 +232,17 @@ impl pallet_validator_set::Config for Runtime {
     type AddRemoveOrigin = CouncilOrRoot;
     type MembershipChanged = Council;
     type MinValidators = ConstU32<1>;
+    type WeightInfo = ();
+}
+
+/// Runtime-upgrade authorization configuration. `AuthorizeOrigin = CouncilOrRoot` is the change
+/// this pallet exists for: instead of only Root being able to call `frame_system`'s own
+/// `authorize_upgrade`, a 75% supermajority of the validators' council can authorize an upgrade
+/// by vote, with root kept as an emergency lever — the same origin shape `AddRemoveOrigin` above
+/// already uses for adding or removing a validator.
+impl pallet_runtime_upgrade::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type AuthorizeOrigin = CouncilOrRoot;
     type WeightInfo = ();
 }
 

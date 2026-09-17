@@ -63,7 +63,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: alloc::borrow::Cow::Borrowed("pilier-runtime"),
     impl_name: alloc::borrow::Cow::Borrowed("pilier-runtime"),
     authoring_version: 1,
-    spec_version: 103,
+    spec_version: 104,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -224,6 +224,13 @@ mod runtime {
 
     #[runtime::pallet_index(12)]
     pub type Dpp = pallet_pilier_dpp;
+
+    // `pallet-runtime-upgrade` shipped in runtime 103, which carried nothing else: it was cut
+    // from the commit the live chain runs, so indices 11 and 12 stood empty there and the pallet
+    // took 13. The two above arrive in 104 and slot into the indices 103 left free, which is why
+    // nothing here is renumbered — an index is part of the chain's wire format.
+    #[runtime::pallet_index(13)]
+    pub type RuntimeUpgrade = pallet_runtime_upgrade;
 }
 
 // Re-export types for node (add at end of file, after construct_runtime)

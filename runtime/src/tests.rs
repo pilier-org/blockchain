@@ -49,9 +49,9 @@ use sp_runtime::{
 
 use crate::{
     AccountId, AccountPublic, AuraId, Balance, BalancesConfig, BuildStorage, Council,
-    CouncilConfig, Dpp, GrandpaId, Registry, Runtime, RuntimeCall, RuntimeEvent,
-    RuntimeGenesisConfig, RuntimeOrigin, Session, SessionKeys, Sudo, SudoConfig, System, UNIT,
-    ValidatorSet,
+    CouncilConfig, Dpp, GrandpaId, Hash, Registry, Runtime, RuntimeCall, RuntimeEvent,
+    RuntimeGenesisConfig, RuntimeOrigin, RuntimeUpgrade, Session, SessionKeys, Sudo, SudoConfig,
+    System, UNIT, ValidatorSet,
 };
 
 /// Derives a deterministic keypair from a `//<seed>` derivation path — the same scheme
@@ -516,6 +516,208 @@ fn plain_signed_origin_is_rejected() {
         assert_eq!(
             pallet_validator_set::Validators::<Runtime>::get(),
             alloc::vec![v1.0.clone(), v2.0.clone(), v3.0.clone()]
+        );
+    });
+}
+
+/// Whether the most recent `UpgradeAuthorized` event from `pallet_runtime_upgrade` carries
+/// `code_hash`. Mirrors `last_council_execution_result` above in spirit: reads the deposited
+/// events rather than trusting `close`'s own `Ok` result, because a council motion can resolve
+/// (`close` returns `Ok`) while the call it executed was itself rejected by `AuthorizeOrigin`.
+fn runtime_upgrade_was_authorized(code_hash: Hash) -> bool {
+    System::events().into_iter().any(|record| {
+        matches!(
+            record.event,
+            RuntimeEvent::RuntimeUpgrade(pallet_runtime_upgrade::Event::UpgradeAuthorized {
+                code_hash: recorded_hash,
+            }) if recorded_hash == code_hash
+        )
+    })
+}
+
+#[test]
+fn council_supermajority_authorizes_a_runtime_upgrade() {
+    let v1 = validator_keys_from_seed("Val1");
+    let v2 = validator_keys_from_seed("Val2");
+    let v3 = validator_keys_from_seed("Val3");
+    let root = get_account_id_from_seed::<sr25519::Public>("Root");
+
+    let mut ext = new_test_ext(&[v1.clone(), v2.clone(), v3.clone()], &root, &[]);
+
+    ext.execute_with(|| {
+        System::set_block_number(1);
+
+        let code_hash: Hash = BlakeTwo256::hash(b"pilier-runtime-103");
+        let call = RuntimeCall::RuntimeUpgrade(pallet_runtime_upgrade::Call::authorize_upgrade {
+            code_hash,
+        });
+        let proposal_hash = BlakeTwo256::hash_of(&call);
+        let proposal_len = call.encode().len() as u32;
+        let weight_bound = crate::configs::CouncilMaxProposalWeight::get();
+
+        // --- Phase A: 2 of 3 ayes must NOT clear the 75% supermajority origin check. ---
+        assert_ok!(Council::propose(
+            RuntimeOrigin::signed(v1.0.clone()),
+            2,
+            Box::new(call.clone()),
+            proposal_len,
+        ));
+        assert_ok!(Council::vote(
+            RuntimeOrigin::signed(v1.0.clone()),
+            proposal_hash,
+            0,
+            true
+        ));
+        assert_ok!(Council::vote(
+            RuntimeOrigin::signed(v2.0.clone()),
+            proposal_hash,
+            0,
+            true
+        ));
+        assert_ok!(Council::close(
+            RuntimeOrigin::signed(v1.0.clone()),
+            proposal_hash,
+            0,
+            weight_bound,
+            proposal_len,
+        ));
+        assert_eq!(
+            last_council_execution_result(),
+            Err(DispatchError::BadOrigin)
+        );
+        assert!(System::authorized_upgrade().is_none());
+        assert!(!runtime_upgrade_was_authorized(code_hash));
+
+        // --- Phase B: all 3 of 3 ayes clears the supermajority and executes the call. ---
+        assert_ok!(Council::propose(
+            RuntimeOrigin::signed(v1.0.clone()),
+            3,
+            Box::new(call.clone()),
+            proposal_len,
+        ));
+        assert_ok!(Council::vote(
+            RuntimeOrigin::signed(v1.0.clone()),
+            proposal_hash,
+            1,
+            true
+        ));
+        assert_ok!(Council::vote(
+            RuntimeOrigin::signed(v2.0.clone()),
+            proposal_hash,
+            1,
+            true
+        ));
+        assert_ok!(Council::vote(
+            RuntimeOrigin::signed(v3.0.clone()),
+            proposal_hash,
+            1,
+            true
+        ));
+        assert_ok!(Council::close(
+            RuntimeOrigin::signed(v1.0.clone()),
+            proposal_hash,
+            1,
+            weight_bound,
+            proposal_len,
+        ));
+        assert_eq!(last_council_execution_result(), Ok(()));
+
+        let authorization = System::authorized_upgrade().expect("upgrade should be authorized");
+        assert_eq!(authorization.code_hash(), &code_hash);
+        assert!(runtime_upgrade_was_authorized(code_hash));
+    });
+}
+
+#[test]
+fn root_authorizes_a_runtime_upgrade_directly_bypassing_the_council() {
+    let v1 = validator_keys_from_seed("Val1");
+    let v2 = validator_keys_from_seed("Val2");
+    let v3 = validator_keys_from_seed("Val3");
+    let root = get_account_id_from_seed::<sr25519::Public>("Root");
+
+    let mut ext = new_test_ext(&[v1.clone(), v2.clone(), v3.clone()], &root, &[]);
+
+    ext.execute_with(|| {
+        System::set_block_number(1);
+
+        let code_hash: Hash = BlakeTwo256::hash(b"pilier-runtime-103");
+
+        // The council is never consulted here: this exercises the "root as an emergency lever"
+        // half of `AuthorizeOrigin = CouncilOrRoot`, going through the real `pallet-sudo`
+        // onboarding path, exactly as `root_adds_a_validator_directly_bypassing_the_council` does
+        // for `AddRemoveOrigin`.
+        assert_ok!(Sudo::sudo(
+            RuntimeOrigin::signed(root.clone()),
+            Box::new(RuntimeCall::RuntimeUpgrade(
+                pallet_runtime_upgrade::Call::authorize_upgrade { code_hash }
+            )),
+        ));
+
+        let authorization = System::authorized_upgrade().expect("upgrade should be authorized");
+        assert_eq!(authorization.code_hash(), &code_hash);
+    });
+}
+
+#[test]
+fn plain_signed_origin_is_rejected_for_runtime_upgrade_authorization() {
+    let v1 = validator_keys_from_seed("Val1");
+    let v2 = validator_keys_from_seed("Val2");
+    let v3 = validator_keys_from_seed("Val3");
+    let root = get_account_id_from_seed::<sr25519::Public>("Root");
+    let outsider = get_account_id_from_seed::<sr25519::Public>("Outsider");
+
+    let mut ext = new_test_ext(
+        &[v1.clone(), v2.clone(), v3.clone()],
+        &root,
+        core::slice::from_ref(&outsider),
+    );
+
+    ext.execute_with(|| {
+        let code_hash: Hash = BlakeTwo256::hash(b"pilier-runtime-103");
+
+        // A plain signed account that is neither root nor a council supermajority clears neither
+        // half of `CouncilOrRoot`.
+        assert_noop!(
+            RuntimeUpgrade::authorize_upgrade(RuntimeOrigin::signed(outsider.clone()), code_hash),
+            DispatchError::BadOrigin,
+        );
+
+        // A council member's own plain signed origin is rejected the same way — only a
+        // `RawOrigin::Members` origin carrying a 75% majority clears the check, as in
+        // `plain_signed_origin_is_rejected` above.
+        assert_noop!(
+            RuntimeUpgrade::authorize_upgrade(RuntimeOrigin::signed(v1.0.clone()), code_hash),
+            DispatchError::BadOrigin,
+        );
+
+        assert!(System::authorized_upgrade().is_none());
+    });
+}
+
+#[test]
+fn apply_authorized_upgrade_without_prior_authorization_is_rejected() {
+    let v1 = validator_keys_from_seed("Val1");
+    let v2 = validator_keys_from_seed("Val2");
+    let v3 = validator_keys_from_seed("Val3");
+    let root = get_account_id_from_seed::<sr25519::Public>("Root");
+    let outsider = get_account_id_from_seed::<sr25519::Public>("Outsider");
+
+    let mut ext = new_test_ext(
+        &[v1.clone(), v2.clone(), v3.clone()],
+        &root,
+        core::slice::from_ref(&outsider),
+    );
+
+    ext.execute_with(|| {
+        // Nobody authorized anything yet, so `frame_system`'s own permissionless
+        // `apply_authorized_upgrade` — reachable by any signed account — rejects the submission
+        // with `NothingAuthorized` rather than looking at the (irrelevant, made-up) code bytes.
+        assert_noop!(
+            System::apply_authorized_upgrade(
+                RuntimeOrigin::signed(outsider.clone()),
+                alloc::vec![1, 2, 3],
+            ),
+            frame_system::Error::<Runtime>::NothingAuthorized,
         );
     });
 }

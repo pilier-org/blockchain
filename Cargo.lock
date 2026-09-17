@@ -6272,6 +6272,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-runtime-upgrade"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-session"
 version = "45.2.0"
 source = "git+https://github.com/paritytech/polkadot-sdk?branch=stable2512#3b3ed75847d0c761b41dd778304b611a54f0f228"
@@ -6733,6 +6747,7 @@ dependencies = [
  "pallet-grandpa",
  "pallet-pilier-dpp",
  "pallet-pilier-registry",
+ "pallet-runtime-upgrade",
  "pallet-session",
  "pallet-sudo",
  "pallet-timestamp",
