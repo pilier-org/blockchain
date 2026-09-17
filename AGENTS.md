@@ -17,6 +17,9 @@ Compact orientation for OpenCode sessions. For the full project story, read `CLA
 - `node/` — operator node (`pilier-node`); networking, RPC, Aura/GRANDPA consensus, CLI.
 - `runtime/` — on-chain state transition function (`pilier-runtime`), compiled to native and WebAssembly.
 - `pallets/validator-set/` — **live** pallet. Owns the mutable validator set and feeds it to `pallet-session` via `SessionManager`.
+- `pallets/registry/` — **live** pallet, crate `pallet-pilier-registry`. The product registry.
+- `pallets/dpp/` — **live** pallet, crate `pallet-pilier-dpp`. The digital product passport; charges a publication price the council can change on-chain.
+- `pallets/runtime-upgrade/` — **live** pallet, crate `pallet-runtime-upgrade`. Authorises a runtime upgrade by council vote, with the Sudo root key kept as an emergency fallback.
 - `pallets/template/` — scaffold only. It compiles as a workspace member but is **not wired into the runtime**. Treat it as example code.
 
 ## Runtime pallets and a critical ordering rule
@@ -36,6 +39,9 @@ Live pallets and their fixed indices in `runtime/src/lib.rs`:
 | 8 | **Session** |
 | 9 | Council (`pallet-collective` Instance1) |
 | 10 | Authorship |
+| 11 | **Registry** (`pallet-pilier-registry`) |
+| 12 | **Dpp** (`pallet-pilier-dpp`) |
+| 13 | **RuntimeUpgrade** (`pallet-runtime-upgrade`) |
 
 **Ordering constraint:** `ValidatorSet` must have a lower pallet index than `Session`. FRAME builds genesis by ascending index, and `Session` reads `ValidatorSet::Validators` during its genesis build. If `Session` is indexed lower, genesis authorities become empty and the node panics on startup (`genesis authorities is non-empty`).
 
@@ -79,7 +85,7 @@ Run tests for one pallet:
 
 ```sh
 cargo test -p pallet-validator-set
-cargo test -p pallet-template
+cargo test -p pallet-pilier-dpp
 ```
 
 Run a single test by name:
@@ -129,7 +135,7 @@ If genesis changes, regenerate the raw chain specs at the repo root so nodes agr
 
 ## Runtime versioning
 
-- `spec_version` lives in `runtime/src/lib.rs` inside the `VERSION` block (currently `102`). Bump it on any runtime change.
+- `spec_version` lives in `runtime/src/lib.rs` inside the `VERSION` block (currently `104`). Bump it on any runtime change.
 - It is append-only / monotonically increasing. Never decrease it, even when rebuilding genesis from scratch.
 - The public changelog of what changed per `spec_version` is `CHANGELOG.md` at the repo root.
 
