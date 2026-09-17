@@ -141,8 +141,7 @@ Exposed ports: `30333` (p2p), `9944` (RPC), `9615` (Prometheus).
 
 ## Authoritative context
 
-- `/Users/laptop/Dev/pilier/devops` — the shared project knowledge base (Obsidian vault), including plans, decisions, and operational context for the broader Pilier project.
 - `CLAUDE.md` — full project orientation, command reference, and conventions.
 - `CHANGELOG.md` — the public record of what changed per runtime `spec_version`.
 
-Internal planning (`ai/decisions`, `ai/plans`) was removed from this public repo and now lives only in the private knowledge base above; do not re-add internal documents here.
+This repository carries code, the public changelog and operator documentation. Internal planning and decision documents do not belong here; `ai/` is ignored for that reason.
