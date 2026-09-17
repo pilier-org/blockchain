@@ -35,6 +35,16 @@ use super::{
 /// is used directly, there being exactly one collective in this runtime for now.
 type CouncilCollective = pallet_collective::Instance1;
 
+/// Root (Sudo), or a 75% supermajority of the validators' council — the one privileged origin
+/// this runtime uses everywhere it needs "the council decides, with root as an emergency lever".
+/// Originally inlined only into `pallet_validator_set::Config::AddRemoveOrigin`; named here so
+/// `pallet_runtime_upgrade::Config::AuthorizeOrigin` can share the exact same definition rather
+/// than duplicating it.
+pub type CouncilOrRoot = frame_support::traits::EitherOfDiverse<
+    frame_system::EnsureRoot<AccountId>,
+    pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>,
+>;
+
 /// We allow for 75% of the block to be occupied by Normal transactions.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
@@ -219,12 +229,20 @@ impl pallet_collective::Config<CouncilCollective> for Runtime {
 /// council votes.
 impl pallet_validator_set::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type AddRemoveOrigin = frame_support::traits::EitherOfDiverse<
-        frame_system::EnsureRoot<AccountId>,
-        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>,
-    >;
+    type AddRemoveOrigin = CouncilOrRoot;
     type MembershipChanged = Council;
     type MinValidators = ConstU32<1>;
+    type WeightInfo = ();
+}
+
+/// Runtime-upgrade authorization configuration. `AuthorizeOrigin = CouncilOrRoot` is the change
+/// this pallet exists for: instead of only Root being able to call `frame_system`'s own
+/// `authorize_upgrade`, a 75% supermajority of the validators' council can authorize an upgrade
+/// by vote, with root kept as an emergency lever — the same origin shape `AddRemoveOrigin` above
+/// already uses for adding or removing a validator.
+impl pallet_runtime_upgrade::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type AuthorizeOrigin = CouncilOrRoot;
     type WeightInfo = ();
 }
 

@@ -63,7 +63,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: alloc::borrow::Cow::Borrowed("pilier-runtime"),
     impl_name: alloc::borrow::Cow::Borrowed("pilier-runtime"),
     authoring_version: 1,
-    spec_version: 102,
+    spec_version: 103,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -206,6 +206,13 @@ mod runtime {
     // index 10 (after Council) is safe.
     #[runtime::pallet_index(10)]
     pub type Authorship = pallet_authorship;
+
+    // Indices 11 (registry) and 12 (passport, "dpp") are reserved on `main` for pallets this
+    // branch does not carry yet; they are deliberately left unused here so that merging `main`
+    // into this branch later slots them in without renumbering anything. `RuntimeUpgrade` takes
+    // the next free index after that reservation.
+    #[runtime::pallet_index(13)]
+    pub type RuntimeUpgrade = pallet_runtime_upgrade;
 }
 
 // Re-export types for node (add at end of file, after construct_runtime)

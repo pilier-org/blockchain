@@ -45,7 +45,9 @@ justfile
 /target/
 **/*.rs.bk
 *.pdb
-Cargo.lock
+# Cargo.lock is committed on purpose: this workspace builds a node binary that operators and
+# the deployment image build from source, so every build must resolve to the same dependency
+# versions. Without it a fresh clone re-resolves everything and can pick up a yanked crate.
 
 # IDE
 .vscode/
