@@ -63,7 +63,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: alloc::borrow::Cow::Borrowed("pilier-runtime"),
     impl_name: alloc::borrow::Cow::Borrowed("pilier-runtime"),
     authoring_version: 1,
-    spec_version: 104,
+    spec_version: 105,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -218,12 +218,14 @@ mod runtime {
     #[runtime::pallet_index(11)]
     pub type Registry = pallet_pilier_registry;
 
-    // Index 12 belonged to `pallet-pilier-dpp`, the digital product passport pallet, which
-    // shipped in runtime 103. It is removed from the runtime entirely for 104, while its own
-    // evidence-file table moves out into `pallet-pilier-documents` (index 14, below) and its
-    // write access is closed to a council-approved project's own members. Left empty rather than
-    // reused: an index is part of the chain's wire format, and this one is reserved for the
-    // passport pallet's own return in a later runtime version.
+    // `pallet-pilier-dpp`, the digital product passport pallet, shipped in runtime 103 at this
+    // index, was removed from the runtime entirely for 104 — its own evidence-file table moved
+    // out into `pallet-pilier-documents` (index 14, below) and its write access closed to a
+    // council-approved project's own members — and returns here, unchanged in index, for 105.
+    // An index is part of the chain's wire format: this one was left empty rather than reused
+    // while the pallet was out, and the pallet keeps it now that it is back.
+    #[runtime::pallet_index(12)]
+    pub type Dpp = pallet_pilier_dpp;
 
     // `pallet-runtime-upgrade` shipped in runtime 103, which carried nothing else: it was cut
     // from the commit the live chain runs, so indices 11 and 12 stood empty there and the pallet

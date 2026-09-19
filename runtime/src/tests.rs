@@ -806,13 +806,13 @@ fn preexisting_validator_set_call_and_newly_declared_registry_documents_calls_co
 }
 
 /// The runtime's own generated metadata — not the source text, which could drift from what the
-/// compiled runtime actually reports on chain — names `Registry` at pallet index 11 and
-/// `Documents` at pallet index 14, and names no pallet at all at index 12: the index
-/// `pallet-pilier-dpp` left behind when it was removed from this runtime for spec version 104,
-/// reserved in `lib.rs`'s own comment for that pallet's return in a later version rather than
-/// reused here.
+/// compiled runtime actually reports on chain — names `Registry` at pallet index 11, `Dpp` at
+/// pallet index 12 and `Documents` at pallet index 14. `Dpp` held index 12 in spec version 103,
+/// was removed from the runtime for 104 while its evidence-file table moved to `Documents`, and
+/// returns to the same index, unchanged, for 105 — an index is part of the chain's wire format
+/// and is never reused by a different pallet even while its own pallet is out of the runtime.
 #[test]
-fn registry_and_documents_pallet_indices_are_11_and_14_and_index_12_is_unoccupied() {
+fn registry_dpp_and_documents_pallet_indices_are_11_12_and_14() {
     let frame_support::__private::metadata::RuntimeMetadataPrefixed(_, metadata) =
         Runtime::metadata();
     let version = metadata.version();
@@ -829,9 +829,6 @@ fn registry_and_documents_pallet_indices_are_11_and_14_and_index_12_is_unoccupie
     };
 
     assert_eq!(index_of("Registry"), Some(11));
+    assert_eq!(index_of("Dpp"), Some(12));
     assert_eq!(index_of("Documents"), Some(14));
-    assert!(
-        !pallets.iter().any(|pallet| pallet.index == 12),
-        "no pallet may occupy index 12 — it is reserved for pallet-pilier-dpp's own return",
-    );
 }

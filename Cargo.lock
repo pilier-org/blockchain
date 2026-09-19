@@ -6767,6 +6767,7 @@ dependencies = [
  "pallet-collective",
  "pallet-grandpa",
  "pallet-pilier-documents",
+ "pallet-pilier-dpp",
  "pallet-pilier-registry",
  "pallet-runtime-upgrade",
  "pallet-session",

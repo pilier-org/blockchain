@@ -27,16 +27,16 @@ use crate::MICRO_UNIT;
 
 // Local module imports from lib.rs
 use super::{
-    AccountId, Aura, Balance, Balances, Block, BlockNumber, Council, EXISTENTIAL_DEPOSIT, Hash,
-    Nonce, Registry, Runtime, RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason,
-    RuntimeOrigin, RuntimeTask, SLOT_DURATION, SessionKeys, System, VERSION, ValidatorSet,
+    AccountId, Aura, Balance, Balances, Block, BlockNumber, Council, Documents,
+    EXISTENTIAL_DEPOSIT, Hash, Nonce, Registry, Runtime, RuntimeCall, RuntimeEvent,
+    RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask, SLOT_DURATION, SessionKeys,
+    System, VERSION, ValidatorSet,
 };
 
-// The digital product passport pallet (`pallet-pilier-dpp`) is removed from this runtime for
-// spec version 104 — see the pallet-index comment in `lib.rs` — so this module no longer holds
-// its `Config` implementation or the `use` import for it. `pallet-pilier-documents`, the new
-// pallet holding what used to be the passport pallet's own evidence-file table, is configured
-// below instead.
+// The digital product passport pallet (`pallet-pilier-dpp`) was removed from this runtime for
+// spec version 104 — see the pallet-index comment in `lib.rs` — while its own evidence-file
+// table moved out into `pallet-pilier-documents`, configured below. It returns for spec version
+// 105, configured below the documents pallet it now depends on for that same table.
 
 /// The council's `pallet-collective` instance. A type alias only — `pallet_collective::Instance1`
 /// is used directly, there being exactly one collective in this runtime for now.
@@ -323,6 +323,26 @@ impl pallet_pilier_documents::Config for Runtime {
     type AdminOrigin = CouncilOrRoot;
     type MaxFilePathLen = MaxFilePathLen;
     type MaxFileContentTypeLen = MaxFileContentTypeLen;
+    type WeightInfo = ();
+}
+
+/// Passport configuration. `Registry` mirrors the registry and documents pallets' own wiring
+/// above: the same pallet answers whether the calling account may write under a company
+/// registration number. `Documents` is new since this pallet's own evidence-file table moved
+/// out to `pallet-pilier-documents` above: this pallet no longer stores a file's fingerprint
+/// itself, it only asks `Documents` whether one is registered before citing it in a passport.
+/// `Currency` and `AdminOrigin` are the same fungible balance and council-or-root origin every
+/// other pallet in this runtime uses. Every length bound is named in the `parameter_types!`
+/// block above.
+impl pallet_pilier_dpp::Config for Runtime {
+    type Registry = Registry;
+    type Documents = Documents;
+    type Currency = Balances;
+    type AdminOrigin = CouncilOrRoot;
+    type MaxCompanyRegistrationNumberLen = MaxCompanyRegistrationNumberLen;
+    type MaxGs1IdLen = MaxGs1IdLen;
+    type MaxRecordBodyLen = MaxRecordBodyLen;
+    type MaxEventLen = MaxEventLen;
     type WeightInfo = ();
 }
 

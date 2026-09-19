@@ -15,6 +15,18 @@ That fingerprint is reproducible because the compiler is pinned to an exact vers
 image build with that version. Building the runtime with a newer compiler produces a different
 file, or fails to link at all.
 
+## [runtime 105]
+
+### Added
+- **Digital product passport pallet.** The pallet that publishes passport records and events
+  against a product, planned in runtime 104 but deferred out of it, now joins the runtime. A
+  passport is published under a company registration number and a GS1 product identifier, and
+  every evidence file it cites by fingerprint must already be registered in the documents
+  pallet runtime 104 added — a passport can no longer name a file nobody has registered.
+  Administrative calls are governed the same way every other pallet in this runtime already is:
+  a supermajority (at least 75%) vote of the validators' council, with the root key retained as
+  an emergency override.
+
 ## [runtime 104]
 
 ### Added
