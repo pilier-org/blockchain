@@ -31,7 +31,7 @@ pallet-authorship.workspace = true
 pallet-balances.workspace = true
 pallet-collective.workspace = true
 pallet-grandpa.workspace = true
-pallet-pilier-dpp = { path = "../pallets/dpp", default-features = false }
+pallet-pilier-documents = { path = "../pallets/documents", default-features = false }
 pallet-pilier-registry = { path = "../pallets/registry", default-features = false }
 pallet-session.workspace = true
 pallet-sudo.workspace = true
@@ -83,7 +83,7 @@ std = [
   "pallet-balances/std",
   "pallet-collective/std",
   "pallet-grandpa/std",
-  "pallet-pilier-dpp/std",
+  "pallet-pilier-documents/std",
   "pallet-pilier-registry/std",
   "pallet-session/std",
   "pallet-sudo/std",
@@ -122,7 +122,7 @@ runtime-benchmarks = [
 	"frame-system/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
 	"pallet-collective/runtime-benchmarks",
-	"pallet-pilier-dpp/runtime-benchmarks",
+	"pallet-pilier-documents/runtime-benchmarks",
 	"pallet-pilier-registry/runtime-benchmarks",
 	"pallet-session/runtime-benchmarks",
 	"pallet-timestamp/runtime-benchmarks",
@@ -142,7 +142,7 @@ try-runtime = [
 	"pallet-balances/try-runtime",
 	"pallet-collective/try-runtime",
 	"pallet-grandpa/try-runtime",
-	"pallet-pilier-dpp/try-runtime",
+	"pallet-pilier-documents/try-runtime",
 	"pallet-pilier-registry/try-runtime",
 	"pallet-session/try-runtime",
 	"pallet-sudo/try-runtime",

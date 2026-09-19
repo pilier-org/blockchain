@@ -128,12 +128,11 @@ pub type UncheckedExtrinsic =
 
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, TxExtension>;
 
-// No migration is declared here. `pallet-pilier-dpp`'s `PublicationPrice` carries its own
-// storage default (`DefaultPublicationPrice`, in `pallets/dpp/src/lib.rs`), read for any key that
-// has never been written — the state this pallet is in the moment it is first declared below,
-// whether it arrived by a fresh genesis or by a forkless runtime upgrade, since it carries no
-// genesis config of its own. A written value, including a written zero, always overrides that
-// default.
+// No migration is declared here. `pallet-pilier-documents`'s `DocumentPrice` carries its own
+// storage default (`DefaultDocumentPrice`, in `pallets/documents/src/lib.rs`), read for any key
+// that has never been written — the state this pallet is in the moment it is first declared
+// below, since it carries no genesis config of its own. A written value, including a written
+// zero, always overrides that default.
 type Migrations = ();
 
 pub type Executive = frame_executive::Executive<
@@ -212,25 +211,34 @@ mod runtime {
     #[runtime::pallet_index(10)]
     pub type Authorship = pallet_authorship;
 
-    // `pallet-pilier-registry` and `pallet-pilier-dpp` are appended here, after every
-    // previously occupied index (0 through 10) and never reordered among themselves or against
-    // an existing pallet: a pallet's index is part of the chain's wire format. Neither carries a
-    // genesis config of its own — both start empty, and `pallet-pilier-dpp`'s
-    // `PublicationPrice` reads as its own storage default until something writes it, not from
-    // genesis — so unlike `ValidatorSet`/`Session`, neither has an ordering dependency on the
-    // other or on any pallet above.
+    // `pallet-pilier-registry` is appended here, after every previously occupied index (0
+    // through 10): a pallet's index is part of the chain's wire format, and this one is never
+    // renumbered. It carries no genesis config of its own — it starts empty — so unlike
+    // `ValidatorSet`/`Session`, it has no ordering dependency on any pallet above.
     #[runtime::pallet_index(11)]
     pub type Registry = pallet_pilier_registry;
 
-    #[runtime::pallet_index(12)]
-    pub type Dpp = pallet_pilier_dpp;
+    // Index 12 belonged to `pallet-pilier-dpp`, the digital product passport pallet, which
+    // shipped in runtime 103. It is removed from the runtime entirely for 104, while its own
+    // evidence-file table moves out into `pallet-pilier-documents` (index 14, below) and its
+    // write access is closed to a council-approved project's own members. Left empty rather than
+    // reused: an index is part of the chain's wire format, and this one is reserved for the
+    // passport pallet's own return in a later runtime version.
 
     // `pallet-runtime-upgrade` shipped in runtime 103, which carried nothing else: it was cut
     // from the commit the live chain runs, so indices 11 and 12 stood empty there and the pallet
-    // took 13. The two above arrive in 104 and slot into the indices 103 left free, which is why
-    // nothing here is renumbered — an index is part of the chain's wire format.
+    // took 13. It keeps that index here — an index is part of the chain's wire format.
     #[runtime::pallet_index(13)]
     pub type RuntimeUpgrade = pallet_runtime_upgrade;
+
+    // `pallet-pilier-documents` is new in 104: the chain-wide, deduplicated table of
+    // evidence-file fingerprints a digital product passport cites as proof, writable only by a
+    // council-approved project's own owner or writer. It carries no genesis config of its own —
+    // it starts empty, and `DocumentPrice` reads as its own storage default until something
+    // writes it — so it has no ordering dependency on any pallet above. Appended at the next
+    // free index, 14, rather than reusing the index `pallet-pilier-dpp` left empty above.
+    #[runtime::pallet_index(14)]
+    pub type Documents = pallet_pilier_documents;
 }
 
 // Re-export types for node (add at end of file, after construct_runtime)

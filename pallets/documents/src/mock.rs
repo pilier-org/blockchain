@@ -1,4 +1,4 @@
-use crate as pallet_pilier_dpp;
+use crate as pallet_pilier_documents;
 use codec::Encode;
 use frame_support::{
     ConsensusEngineId, derive_impl,
@@ -61,7 +61,7 @@ mod runtime {
     pub type Registry = pallet_pilier_registry::Pallet<Test>;
 
     #[runtime::pallet_index(2)]
-    pub type Dpp = pallet_pilier_dpp::Pallet<Test>;
+    pub type Documents = pallet_pilier_documents::Pallet<Test>;
 
     #[runtime::pallet_index(3)]
     pub type Balances = pallet_balances::Pallet<Test>;
@@ -74,9 +74,6 @@ mod runtime {
 
     #[runtime::pallet_index(6)]
     pub type TransactionPayment = pallet_transaction_payment::Pallet<Test>;
-
-    #[runtime::pallet_index(7)]
-    pub type Documents = pallet_pilier_documents::Pallet<Test>;
 }
 
 #[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
@@ -86,7 +83,7 @@ impl frame_system::Config for Test {
 }
 
 parameter_types! {
-    /// `pallet-pilier-registry`'s own configuration, composed into this mock so passport
+    /// `pallet-pilier-registry`'s own configuration, composed into this mock so documents
     /// pallet tests exercise the real `RegistryAccess` implementation rather than a stand-in.
     pub const MaxRegistryCompanyRegistrationNumberLen: u32 = 32;
     pub const MaxGs1IdLenForRegistry: u32 = 128;
@@ -143,7 +140,7 @@ pub fn set_block_author(author: AccountId) {
 }
 
 /// Test fixture: clear the current block's author, so `Authorship::author()` reports `None` —
-/// the crash case this pallet's `Pallet::charge_publication_price` burns for.
+/// the crash case this pallet's `Pallet::charge_document_price` burns for.
 pub fn clear_block_author() {
     BLOCK_AUTHOR.with(|a| *a.borrow_mut() = None);
 }
@@ -191,40 +188,9 @@ impl pallet_collective::Config<CouncilCollective> for Test {
 }
 
 parameter_types! {
-    /// This pallet's own bounds. `MaxRecordBodyLen` and `MaxEventLen` mirror the pallet's own
-    /// ceilings exactly (four kibibytes and one hundred twenty-eight bytes), so a test
-    /// that exercises the configured bound is exercising the real limit, not a stand-in for it.
-    pub const MaxCompanyRegistrationNumberLen: u32 = 32;
-    pub const MaxGs1IdLen: u32 = 128;
-    pub const MaxRecordBodyLen: u32 = 4 * 1024;
-    pub const MaxEventLen: u32 = 128;
-}
-
-/// The origin allowed to change an admin-gated price: root as an emergency lever, or a council
-/// supermajority of at least 75%. Mirrors `pallet_validator_set::Config::AddRemoveOrigin` in
-/// `runtime/src/configs/mod.rs` exactly, so the acceptor's own comparison between the two origin
-/// types has something identical to compare. Shared by `pallet-pilier-dpp` and
-/// `pallet-pilier-documents`, both composed as real dependency pallets in this mock.
-pub type PriceAdminOrigin = EitherOfDiverse<
-    EnsureRoot<AccountId>,
-    pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>,
->;
-
-impl pallet_pilier_dpp::Config for Test {
-    type Registry = Registry;
-    type Documents = Documents;
-    type Currency = Balances;
-    type AdminOrigin = PriceAdminOrigin;
-    type MaxCompanyRegistrationNumberLen = MaxCompanyRegistrationNumberLen;
-    type MaxGs1IdLen = MaxGs1IdLen;
-    type MaxRecordBodyLen = MaxRecordBodyLen;
-    type MaxEventLen = MaxEventLen;
-    type WeightInfo = ();
-}
-
-parameter_types! {
-    /// `pallet-pilier-documents`'s own bounds, composed here as a real dependency pallet so this
-    /// pallet's tests exercise the real `DocumentsAccess` implementation rather than a stand-in.
+    /// This pallet's own bounds, mirroring the pallet's own ceilings exactly (256 and 128
+    /// bytes), so a test that exercises the configured bound is exercising the real limit, not a
+    /// stand-in for it.
     pub const MaxFilePathLen: u32 = 256;
     pub const MaxFileContentTypeLen: u32 = 128;
 }
@@ -232,7 +198,13 @@ parameter_types! {
 impl pallet_pilier_documents::Config for Test {
     type Registry = Registry;
     type Currency = Balances;
-    type AdminOrigin = PriceAdminOrigin;
+    // Mirrors `pallet_validator_set::Config::AddRemoveOrigin` in `runtime/src/configs/mod.rs`
+    // exactly — root as an emergency lever, or a council supermajority of at least 75% — so the
+    // acceptor's own comparison between the two origin types has something identical to compare.
+    type AdminOrigin = EitherOfDiverse<
+        EnsureRoot<AccountId>,
+        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>,
+    >;
     type MaxFilePathLen = MaxFilePathLen;
     type MaxFileContentTypeLen = MaxFileContentTypeLen;
     type WeightInfo = ();
@@ -275,9 +247,9 @@ impl WeightToFeePolynomial for WeightToFee {
 
 impl pallet_transaction_payment::Config for Test {
     type RuntimeEvent = RuntimeEvent;
-    // The standard fee's destination does not matter to this mock — phase C measures what the
-    // *publisher* pays in total, not who ends up with the standard fee — so it is simply burned,
-    // unlike the runtime's own `ToAuthor`.
+    // The standard fee's destination does not matter to this mock — the fee-pipeline tests
+    // measure what the *caller* pays in total, not who ends up with the standard fee — so it is
+    // simply burned, unlike the runtime's own `ToAuthor`.
     type OnChargeTransaction = FungibleAdapter<Balances, ()>;
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = WeightToFee;
@@ -331,29 +303,37 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 }
 
 /// Test fixture: mint `amount` of the mock currency directly into `who`'s account, for tests
-/// that need a funded payer before exercising [`Pallet::charge_publication_price`] — `who`
-/// starts with no balance otherwise, since [`new_test_ext`] seeds no `pallet_balances` genesis.
+/// that need a funded payer before exercising [`Pallet::charge_document_price`] — `who` starts
+/// with no balance otherwise, since [`new_test_ext`] seeds no `pallet_balances` genesis.
 pub fn fund_account(who: AccountId, amount: Balance) {
     Balances::mint_into(&who, amount).expect("minting into a test account must not fail");
 }
 
 /// Test fixture: advance the mock chain to block `number`. Every test in this file that does
-/// not call this starts and stays at block zero, since `new_test_ext` only builds genesis
-/// storage and never advances the block number itself — a proof that a stored value tracks the
-/// block it was written at needs this call, because comparing a stored zero against a block
-/// number that was never moved off zero proves nothing.
+/// not call this starts and stays at block zero.
 pub fn set_block_number(number: frame_system::pallet_prelude::BlockNumberFor<Test>) {
     System::set_block_number(number);
 }
 
-/// Test fixture: create a project owned by `owner`, grant it `company_registration_number`,
-/// register a schema under `schema_id`'s expected identifier order, and create a storage
-/// endpoint under the same company. Returns nothing — callers assert against the fixed
-/// identifiers this produces, starting at zero for each of `pallet-pilier-registry`'s own
-/// counters, since each test runs against a fresh instance of the mock runtime's storage.
-pub fn setup_project_with_permission(owner: AccountId, company_registration_number: &[u8]) {
+/// Test fixture: create a project owned by `owner` and return its identifier.
+pub fn create_project(owner: AccountId) -> u32 {
+    let project_id = pallet_pilier_registry::NextProjectId::<Test>::get();
     assert!(Registry::create_project(RuntimeOrigin::root(), owner).is_ok());
-    let project_id = pallet_pilier_registry::NextProjectId::<Test>::get() - 1;
+    project_id
+}
+
+/// Test fixture: replace `project_id`'s writer list with `writers`.
+pub fn set_project_writers(project_id: u32, writers: Vec<AccountId>) {
+    assert!(Registry::set_project_writers(RuntimeOrigin::root(), project_id, writers).is_ok());
+}
+
+/// Test fixture: create a project owned by `owner`, grant it `company_registration_number`, and
+/// create a storage endpoint under it, called by `owner`. Returns the endpoint's identifier —
+/// `register_file` only checks that the named storage endpoint exists, not that it belongs to
+/// the same project the caller registers the file under, so most tests only need this endpoint
+/// and a separately created project.
+pub fn setup_storage_endpoint(owner: AccountId, company_registration_number: &[u8]) -> u32 {
+    let project_id = create_project(owner);
     assert!(
         Registry::grant_registration_number(
             RuntimeOrigin::root(),
@@ -362,25 +342,14 @@ pub fn setup_project_with_permission(owner: AccountId, company_registration_numb
         )
         .is_ok()
     );
-}
-
-/// Test fixture: register a schema and return its identifier.
-pub fn register_schema() -> u32 {
-    let schema_id = pallet_pilier_registry::NextSchemaId::<Test>::get();
+    let endpoint_id = pallet_pilier_registry::NextStorageEndpointId::<Test>::get();
     assert!(
-        Registry::register_schema(RuntimeOrigin::root(), 1, 1, b"test schema".to_vec()).is_ok()
+        Registry::create_storage_endpoint(
+            RuntimeOrigin::signed(owner),
+            company_registration_number.to_vec(),
+            b"https://storage.pilier.net/dpp/evidence/".to_vec(),
+        )
+        .is_ok()
     );
-    schema_id
-}
-
-/// Test fixture: read back a head record by its unbounded key, bounding it the same way the
-/// pallet's own dispatchables do. Returns `None` if no record exists at that key.
-pub fn get_head(
-    company_registration_number: &[u8],
-    gs1_id: &[u8],
-) -> Option<crate::HeadRecord<Test>> {
-    let company_registration_number: crate::CompanyRegistrationNumber<Test> =
-        company_registration_number.to_vec().try_into().unwrap();
-    let gs1_id: crate::Gs1Id<Test> = gs1_id.to_vec().try_into().unwrap();
-    crate::Heads::<Test>::get(&company_registration_number, &gs1_id)
+    endpoint_id
 }

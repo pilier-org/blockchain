@@ -56,6 +56,12 @@ pub trait RegistryAccess<AccountId> {
 
     /// Returns whether a storage endpoint with `endpoint_id` exists.
     fn storage_endpoint_exists(endpoint_id: StorageEndpointId) -> bool;
+
+    /// Returns whether `who` is a member — owner or writer — of `project_id`. Returns `false`
+    /// if no project exists with that identifier. Consulted by `pallet-pilier-documents` on
+    /// every file registration, so a write is only ever attributed to a project the council has
+    /// approved.
+    fn is_project_member(project_id: ProjectId, who: &AccountId) -> bool;
 }
 
 /// Weight functions needed for this pallet's dispatchables.
@@ -928,6 +934,10 @@ pub mod pallet {
 
         fn storage_endpoint_exists(endpoint_id: StorageEndpointId) -> bool {
             StorageEndpoints::<T>::contains_key(endpoint_id)
+        }
+
+        fn is_project_member(project_id: ProjectId, who: &T::AccountId) -> bool {
+            Self::is_project_member(project_id, who)
         }
     }
 }

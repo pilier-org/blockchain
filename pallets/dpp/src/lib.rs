@@ -1,15 +1,18 @@
 //! # Pilier Digital Product Passport Pallet
 //!
-//! Holds the digital product passports themselves: a deduplicated table of evidence files, a
-//! head record per passport that can be replaced by a later version, and an append-only table
-//! of lifecycle events. A passport's body is stored as an opaque byte string — this pallet
-//! never parses it. What gives the body meaning is the schema number carried alongside it,
-//! registered in `pallet-pilier-registry` and read there, not reimplemented here.
+//! Holds the digital product passports themselves: a head record per passport that can be
+//! replaced by a later version, and an append-only table of lifecycle events. A passport's body
+//! is stored as an opaque byte string — this pallet never parses it. What gives the body meaning
+//! is the schema number carried alongside it, registered in `pallet-pilier-registry` and read
+//! there, not reimplemented here.
 //!
 //! This pallet asks `pallet-pilier-registry`, through the [`RegistryAccess`] trait, for every
 //! permission and existence check a write depends on: who may write under a company
-//! registration number, whether a schema exists, whether a storage endpoint exists. It never
-//! reads that pallet's storage directly.
+//! registration number, whether a schema exists. It asks `pallet-pilier-documents`, through the
+//! [`DocumentsAccess`] trait, whether a cited evidence-file fingerprint is registered. It never
+//! reads either pallet's storage directly, and it never stores an evidence file itself — that
+//! chain-wide, deduplicated table belongs to `pallet-pilier-documents`, whose own write access is
+//! checked by project membership rather than left open to any signed account.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -19,12 +22,8 @@ use alloc::vec::Vec;
 
 // Re-export pallet items so they can be accessed from the crate namespace.
 pub use pallet::*;
-pub use pallet_pilier_registry::{ProjectId, RegistryAccess, SchemaId, StorageEndpointId};
-
-/// A file's content fingerprint: thirty-two bytes, computed by the caller from the file's
-/// content and never by this pallet. The file table is keyed by this value, so registering the
-/// same content twice — from the same or a different passport — deduplicates to one entry.
-pub type FileFingerprint = [u8; 32];
+pub use pallet_pilier_documents::{DocumentsAccess, FileFingerprint};
+pub use pallet_pilier_registry::{ProjectId, RegistryAccess, SchemaId};
 
 /// The position of one lifecycle event inside one passport's append-only event table. Assigned
 /// by the pallet in order, starting at zero, and never reused or reassigned.
@@ -38,8 +37,6 @@ pub type EventIndex = u32;
 /// used in this pallet's own unit tests; a runtime that includes this pallet supplies its own
 /// generated implementation once `runtime-benchmarks` support is added for it.
 pub trait WeightInfo {
-    /// Weight for [`Pallet::register_file`].
-    fn register_file() -> frame_support::pallet_prelude::Weight;
     /// Weight for [`Pallet::publish_head`].
     fn publish_head() -> frame_support::pallet_prelude::Weight;
     /// Weight for [`Pallet::republish_head`].
@@ -51,9 +48,6 @@ pub trait WeightInfo {
 }
 
 impl WeightInfo for () {
-    fn register_file() -> frame_support::pallet_prelude::Weight {
-        frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
-    }
     fn publish_head() -> frame_support::pallet_prelude::Weight {
         frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
     }
@@ -77,7 +71,7 @@ mod tests;
 #[frame_support::pallet]
 pub mod pallet {
     use super::{
-        EventIndex, FileFingerprint, ProjectId, RegistryAccess, SchemaId, StorageEndpointId, Vec,
+        DocumentsAccess, EventIndex, FileFingerprint, ProjectId, RegistryAccess, SchemaId, Vec,
         WeightInfo,
     };
     use frame_support::{
@@ -118,9 +112,14 @@ pub mod pallet {
         frame_system::Config<RuntimeEvent: From<Event<Self>>> + pallet_authorship::Config
     {
         /// Consulted on every write: who may publish under a company registration number, does
-        /// a schema exist, does a storage endpoint exist. Implemented by
-        /// `pallet-pilier-registry`; this pallet never reads that pallet's storage directly.
+        /// a schema exist. Implemented by `pallet-pilier-registry`; this pallet never reads that
+        /// pallet's storage directly.
         type Registry: RegistryAccess<Self::AccountId>;
+
+        /// Consulted on every write that cites an evidence-file fingerprint: is it registered.
+        /// Implemented by `pallet-pilier-documents`; this pallet never reads that pallet's
+        /// storage directly, and never stores an evidence file itself.
+        type Documents: DocumentsAccess;
 
         /// The fungible token [`PublicationPrice`] is charged in and paid out from. Bound
         /// through the same `fungible` trait family `pallet_transaction_payment`'s
@@ -159,16 +158,6 @@ pub mod pallet {
         #[pallet::constant]
         type MaxEventLen: Get<u32>;
 
-        /// Upper bound, in bytes, on an evidence file's path remainder (the part of its address
-        /// past the storage endpoint's own common address part).
-        #[pallet::constant]
-        type MaxFilePathLen: Get<u32>;
-
-        /// Upper bound, in bytes, on an evidence file's content type (for example, a MIME
-        /// type).
-        #[pallet::constant]
-        type MaxFileContentTypeLen: Get<u32>;
-
         /// Weight information for this pallet's dispatchables.
         type WeightInfo: WeightInfo;
     }
@@ -195,12 +184,6 @@ pub mod pallet {
     /// `T::MaxEventLen`.
     pub type EventBody<T> = BoundedVec<u8, <T as Config>::MaxEventLen>;
 
-    /// An evidence file's path remainder, bounded by `T::MaxFilePathLen`.
-    pub type FilePath<T> = BoundedVec<u8, <T as Config>::MaxFilePathLen>;
-
-    /// An evidence file's content type, bounded by `T::MaxFileContentTypeLen`.
-    pub type FileContentType<T> = BoundedVec<u8, <T as Config>::MaxFileContentTypeLen>;
-
     /// One lifecycle event as this pallet stores it: the caller's opaque body plus the block in
     /// which this pallet recorded it. The two carry different dates and neither substitutes for
     /// the other: a date inside `body`, if the schema puts one there, is a claim made by whoever
@@ -226,37 +209,6 @@ pub mod pallet {
         /// The number of the block in which this pallet recorded this event.
         pub recorded_at: BlockNumberFor<T>,
     }
-
-    /// One entry in the deduplicated file table: where an evidence file lives and what it is,
-    /// keyed in storage by its content fingerprint.
-    #[derive(
-        CloneNoBound,
-        PartialEqNoBound,
-        EqNoBound,
-        Encode,
-        Decode,
-        MaxEncodedLen,
-        TypeInfo,
-        RuntimeDebugNoBound,
-    )]
-    #[codec(mel_bound(T: Config))]
-    #[scale_info(skip_type_params(T))]
-    pub struct FileInfo<T: Config> {
-        /// The storage endpoint this file's address is relative to.
-        pub storage_endpoint_id: StorageEndpointId,
-        /// The part of the file's address past the storage endpoint's own common address part.
-        pub path: FilePath<T>,
-        /// The file's content type (for example, a MIME type).
-        pub content_type: FileContentType<T>,
-        /// The number of the block in which this fingerprint was first registered.
-        pub registered_at: BlockNumberFor<T>,
-    }
-
-    /// Every evidence file the pallet knows about, keyed by its content fingerprint. Registering
-    /// a fingerprint already present with the same data is a no-op; registering it with
-    /// different data is rejected — see [`Pallet::register_file`].
-    #[pallet::storage]
-    pub type Files<T: Config> = StorageMap<_, Blake2_128Concat, FileFingerprint, FileInfo<T>>;
 
     /// A passport's head record: its current body plus everything a reader needs to make sense
     /// of it without parsing it — the body is an opaque byte string, and the schema number
@@ -364,14 +316,6 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// A new evidence file fingerprint was registered. Not emitted when a fingerprint
-        /// already present is registered again with matching data — that call changes nothing.
-        FileRegistered {
-            fingerprint: FileFingerprint,
-            storage_endpoint_id: StorageEndpointId,
-            path: FilePath<T>,
-            content_type: FileContentType<T>,
-        },
         /// A passport's first version was published.
         HeadPublished {
             company_registration_number: CompanyRegistrationNumber<T>,
@@ -427,22 +371,11 @@ pub mod pallet {
         RecordBodyTooLong,
         /// The lifecycle event's body does not fit `T::MaxEventLen`.
         EventTooLong,
-        /// The evidence file's path remainder does not fit `T::MaxFilePathLen`.
-        FilePathTooLong,
-        /// The evidence file's content type does not fit `T::MaxFileContentTypeLen`.
-        FileContentTypeTooLong,
-        /// No storage endpoint exists with the given identifier.
-        StorageEndpointNotFound,
-        /// This fingerprint is already registered with different data. A file's fingerprint,
-        /// storage endpoint, path and content type are fixed the first time it is registered;
-        /// re-registering the same fingerprint with the same data is accepted and changes
-        /// nothing, but re-registering it with different data is rejected outright — the
-        /// existing entry is never overwritten.
-        FileDataMismatch,
         /// No schema exists with the given identifier.
         SchemaNotFound,
-        /// One of the referenced file fingerprints is not registered in the file table. Call
-        /// [`Pallet::register_file`] for it first.
+        /// One of the referenced file fingerprints is not registered in
+        /// `pallet-pilier-documents`'s own file table. Call that pallet's `register_file` for it
+        /// first.
         FileNotRegistered,
         /// The calling account's project does not currently hold the right to write under this
         /// company registration number.
@@ -460,77 +393,23 @@ pub mod pallet {
     ///
     /// The weights below are temporary hand-written placeholders, marked `TEMPORARY WEIGHT` in
     /// [`WeightInfo`]'s own default implementation, not this pallet's final generated weights.
+    ///
+    /// Call index 0 is deliberately left unused: it belonged to this pallet's own
+    /// `register_file`, moved out to `pallet-pilier-documents`. The remaining calls keep the
+    /// indices they always had — an index is part of the chain's wire format, and renumbering an
+    /// existing call would be as disruptive as renumbering an existing pallet.
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Register an evidence file's content fingerprint, recording where it lives and what
-        /// it is. Registering a fingerprint already present with the same
-        /// `storage_endpoint_id`, `path` and `content_type` succeeds and changes nothing;
-        /// registering it with any different data is rejected with
-        /// [`Error::FileDataMismatch`] — the existing entry is never overwritten.
-        ///
-        /// Fails with [`Error::StorageEndpointNotFound`] if `storage_endpoint_id` does not name
-        /// an existing storage endpoint.
-        #[pallet::call_index(0)]
-        #[pallet::weight(T::WeightInfo::register_file())]
-        pub fn register_file(
-            origin: OriginFor<T>,
-            fingerprint: FileFingerprint,
-            storage_endpoint_id: StorageEndpointId,
-            path: Vec<u8>,
-            content_type: Vec<u8>,
-        ) -> DispatchResult {
-            let _who = ensure_signed(origin)?;
-            ensure!(
-                T::Registry::storage_endpoint_exists(storage_endpoint_id),
-                Error::<T>::StorageEndpointNotFound
-            );
-
-            let path: FilePath<T> = path.try_into().map_err(|_| Error::<T>::FilePathTooLong)?;
-            let content_type: FileContentType<T> = content_type
-                .try_into()
-                .map_err(|_| Error::<T>::FileContentTypeTooLong)?;
-
-            match Files::<T>::get(fingerprint) {
-                Some(existing) => {
-                    ensure!(
-                        existing.storage_endpoint_id == storage_endpoint_id
-                            && existing.path == path
-                            && existing.content_type == content_type,
-                        Error::<T>::FileDataMismatch
-                    );
-                    Ok(())
-                }
-                None => {
-                    let registered_at = frame_system::Pallet::<T>::block_number();
-                    Files::<T>::insert(
-                        fingerprint,
-                        FileInfo {
-                            storage_endpoint_id,
-                            path: path.clone(),
-                            content_type: content_type.clone(),
-                            registered_at,
-                        },
-                    );
-                    Self::deposit_event(Event::FileRegistered {
-                        fingerprint,
-                        storage_endpoint_id,
-                        path,
-                        content_type,
-                    });
-                    Ok(())
-                }
-            }
-        }
-
         /// Publish a passport's first version. Fails with
         /// [`Error::NoPermissionForRegistrationNumber`] if the caller's project does not hold
         /// the right to write under `company_registration_number`, with
         /// [`Error::SchemaNotFound`] if `schema_id` does not name an existing schema, with
-        /// [`Error::FileNotRegistered`] if any of `file_fingerprints` is not in the file table,
-        /// and with [`Error::RecordAlreadyExists`] if a head record already exists at this key
-        /// — call [`Pallet::republish_head`] instead. `file_fingerprints` is checked and then
-        /// discarded: this pallet stores only `body`, never the list, because the body already
-        /// carries whatever references to these files its own schema puts there.
+        /// [`Error::FileNotRegistered`] if any of `file_fingerprints` is not registered in
+        /// `pallet-pilier-documents`, and with [`Error::RecordAlreadyExists`] if a head record
+        /// already exists at this key — call [`Pallet::republish_head`] instead.
+        /// `file_fingerprints` is checked and then discarded: this pallet stores only `body`,
+        /// never the list, because the body already carries whatever references to these files
+        /// its own schema puts there.
         ///
         /// Charges [`PublicationPrice`] to the caller — see
         /// [`Pallet::charge_publication_price`] for how it is charged and accounted — before
@@ -744,8 +623,8 @@ pub mod pallet {
         /// The checks shared by [`Pallet::publish_head`] and [`Pallet::republish_head`]: bound
         /// the key, resolve `who`'s write permission through [`Config::Registry`], confirm
         /// `schema_id` exists, and confirm every fingerprint in `file_fingerprints` is already
-        /// registered in [`Files`]. Returns the bounded key and the resolved project identifier
-        /// for the caller to use.
+        /// registered in `pallet-pilier-documents`, asked through [`Config::Documents`]. Returns
+        /// the bounded key and the resolved project identifier for the caller to use.
         fn authorise_write(
             who: &T::AccountId,
             company_registration_number: Vec<u8>,
@@ -767,7 +646,7 @@ pub mod pallet {
             );
             for fingerprint in file_fingerprints {
                 ensure!(
-                    Files::<T>::contains_key(fingerprint),
+                    T::Documents::file_exists(*fingerprint),
                     Error::<T>::FileNotRegistered
                 );
             }

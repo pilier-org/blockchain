@@ -49,7 +49,7 @@ use sp_runtime::{
 
 use crate::{
     AccountId, AccountPublic, AuraId, Balance, BalancesConfig, BuildStorage, Council,
-    CouncilConfig, Dpp, GrandpaId, Hash, Registry, Runtime, RuntimeCall, RuntimeEvent,
+    CouncilConfig, Documents, GrandpaId, Hash, Registry, Runtime, RuntimeCall, RuntimeEvent,
     RuntimeGenesisConfig, RuntimeOrigin, RuntimeUpgrade, Session, SessionKeys, Sudo, SudoConfig,
     System, UNIT, ValidatorSet,
 };
@@ -723,14 +723,15 @@ fn apply_authorized_upgrade_without_prior_authorization_is_rejected() {
 }
 
 /// A runtime upgrade that declares new pallets must not change how the pallets that were
-/// already live behave. `pallet-pilier-registry` and `pallet-pilier-dpp` were appended to this
-/// runtime after `ValidatorSet`/`Session`/`Council` were already live; this test runs the same
-/// "root adds a validator directly" path `root_adds_a_validator_directly_bypassing_the_council`
-/// proves above, in the same externalities where a project, a schema and a passport head record
-/// are also created through the two newly declared pallets, and checks that neither path's own
-/// result moved because the other pallet is also compiled into this runtime.
+/// already live behave. `pallet-pilier-registry` and `pallet-pilier-documents` are declared in
+/// this runtime after `ValidatorSet`/`Session`/`Council` were already live; this test runs the
+/// same "root adds a validator directly" path `root_adds_a_validator_directly_bypassing_the_council`
+/// proves above, in the same externalities where a project, a storage endpoint and an evidence
+/// file are also created through the two newly declared pallets, and checks that neither path's
+/// own result moved because the other pallet is also compiled into this runtime.
 #[test]
-fn preexisting_validator_set_call_and_newly_declared_registry_dpp_calls_coexist_in_one_runtime() {
+fn preexisting_validator_set_call_and_newly_declared_registry_documents_calls_coexist_in_one_runtime()
+ {
     let v1 = validator_keys_from_seed("Val1");
     let v2 = validator_keys_from_seed("Val2");
     let v3 = validator_keys_from_seed("Val3");
@@ -763,8 +764,9 @@ fn preexisting_validator_set_call_and_newly_declared_registry_dpp_calls_coexist_
             &[v1.0.clone(), v2.0.clone(), v3.0.clone(), candidate.clone()],
         );
 
-        // The newly declared path, in the same externalities: create a project, grant it a
-        // registration number, register a schema, and publish a passport head record through it.
+        // The newly declared path, in the same externalities: create a project owned by
+        // `publisher`, grant it a registration number, create a storage endpoint under it, and
+        // register an evidence file through it.
         assert_ok!(Registry::create_project(
             RuntimeOrigin::root(),
             publisher.clone()
@@ -774,36 +776,62 @@ fn preexisting_validator_set_call_and_newly_declared_registry_dpp_calls_coexist_
             0,
             b"552100554".to_vec(),
         ));
-        assert_ok!(Registry::register_schema(
-            RuntimeOrigin::root(),
-            1,
-            1,
-            b"{\"fields\":[]}".to_vec(),
-        ));
-        assert_ok!(Dpp::publish_head(
+        assert_ok!(Registry::create_storage_endpoint(
             RuntimeOrigin::signed(publisher.clone()),
             b"552100554".to_vec(),
-            b"https://id.gs1.org/01/09506000134352".to_vec(),
+            b"https://storage.pilier.net/dpp/evidence/".to_vec(),
+        ));
+        let fingerprint = [7u8; 32];
+        assert_ok!(Documents::register_file(
+            RuntimeOrigin::signed(publisher.clone()),
             0,
-            b"passport body".to_vec(),
-            alloc::vec::Vec::new(),
+            fingerprint,
+            0,
+            b"certificates/iso-14001.pdf".to_vec(),
+            b"application/pdf".to_vec(),
         ));
 
         // Neither call's own outcome moved: the validator set still carries exactly the four
-        // accounts the sudo call above produced, and the passport reads back exactly as
-        // published.
+        // accounts the sudo call above produced, and the evidence file reads back exactly as
+        // registered.
         assert_same_members(
             pallet_validator_set::Validators::<Runtime>::get(),
             &[v1.0.clone(), v2.0.clone(), v3.0.clone(), candidate.clone()],
         );
-        let company: pallet_pilier_dpp::CompanyRegistrationNumber<Runtime> =
-            b"552100554".to_vec().try_into().unwrap();
-        let gs1: pallet_pilier_dpp::Gs1Id<Runtime> = b"https://id.gs1.org/01/09506000134352"
-            .to_vec()
-            .try_into()
-            .unwrap();
-        let head = pallet_pilier_dpp::Heads::<Runtime>::get(&company, &gs1)
-            .expect("head record must have been published");
-        assert_eq!(&head.body[..], b"passport body");
+        let file = pallet_pilier_documents::Files::<Runtime>::get(fingerprint)
+            .expect("file must have been registered");
+        assert_eq!(file.registered_by, 0);
+        assert_eq!(&file.path[..], b"certificates/iso-14001.pdf");
     });
+}
+
+/// The runtime's own generated metadata — not the source text, which could drift from what the
+/// compiled runtime actually reports on chain — names `Registry` at pallet index 11 and
+/// `Documents` at pallet index 14, and names no pallet at all at index 12: the index
+/// `pallet-pilier-dpp` left behind when it was removed from this runtime for spec version 104,
+/// reserved in `lib.rs`'s own comment for that pallet's return in a later version rather than
+/// reused here.
+#[test]
+fn registry_and_documents_pallet_indices_are_11_and_14_and_index_12_is_unoccupied() {
+    let frame_support::__private::metadata::RuntimeMetadataPrefixed(_, metadata) =
+        Runtime::metadata();
+    let version = metadata.version();
+    let pallets = match metadata {
+        frame_support::__private::metadata::RuntimeMetadata::V14(v14) => v14.pallets,
+        _ => panic!("Runtime::metadata() reported unsupported version {version}"),
+    };
+
+    let index_of = |name: &str| {
+        pallets
+            .iter()
+            .find(|pallet| pallet.name == name)
+            .map(|pallet| pallet.index)
+    };
+
+    assert_eq!(index_of("Registry"), Some(11));
+    assert_eq!(index_of("Documents"), Some(14));
+    assert!(
+        !pallets.iter().any(|pallet| pallet.index == 12),
+        "no pallet may occupy index 12 — it is reserved for pallet-pilier-dpp's own return",
+    );
 }

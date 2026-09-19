@@ -6238,6 +6238,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-pilier-documents"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-authorship",
+ "pallet-balances",
+ "pallet-collective",
+ "pallet-pilier-registry",
+ "pallet-transaction-payment",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-pilier-dpp"
 version = "0.1.0"
 dependencies = [
@@ -6248,6 +6268,7 @@ dependencies = [
  "pallet-authorship",
  "pallet-balances",
  "pallet-collective",
+ "pallet-pilier-documents",
  "pallet-pilier-registry",
  "pallet-transaction-payment",
  "parity-scale-codec",
@@ -6745,7 +6766,7 @@ dependencies = [
  "pallet-balances",
  "pallet-collective",
  "pallet-grandpa",
- "pallet-pilier-dpp",
+ "pallet-pilier-documents",
  "pallet-pilier-registry",
  "pallet-runtime-upgrade",
  "pallet-session",

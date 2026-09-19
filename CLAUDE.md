@@ -45,13 +45,16 @@ This is a Cargo workspace (see the root `Cargo.toml`) with three kinds of member
   function": the actual on-chain logic that validates blocks and applies their changes. It is
   compiled both to native code and to WebAssembly, and the WebAssembly copy is what the chain
   upgrades when the logic changes.
-- `pallets/*` — individual FRAME modules ("pallets"). Five members, four of them live:
-  `pallets/validator-set` (owns the mutable validator set, feeds `pallet-session`),
-  `pallets/registry` (crate `pallet-pilier-registry`), `pallets/dpp` (crate
-  `pallet-pilier-dpp`, the digital product passport), `pallets/runtime-upgrade` (crate
-  `pallet-runtime-upgrade`, authorises a runtime upgrade by council vote), and
-  `pallets/template` (a scaffold that compiles but, as noted above, is not wired into
-  the runtime).
+- `pallets/*` — individual FRAME modules ("pallets"). Six members. Four are wired into the
+  runtime: `pallets/validator-set` (owns the mutable validator set, feeds `pallet-session`),
+  `pallets/registry` (crate `pallet-pilier-registry`), `pallets/documents` (crate
+  `pallet-pilier-documents`, a chain-wide, deduplicated table of evidence-file fingerprints,
+  writable only by a council-approved project's own owner or writer), and
+  `pallets/runtime-upgrade` (crate `pallet-runtime-upgrade`, authorises a runtime upgrade by
+  council vote). Two are not currently wired into the runtime: `pallets/dpp` (crate
+  `pallet-pilier-dpp`, the digital product passport — removed from the runtime for spec version
+  104, planned to return in a later version) and `pallets/template` (a scaffold that compiles
+  but was never wired in).
 
 ### How the runtime is assembled
 
@@ -61,11 +64,14 @@ The runtime is defined across a few files, and understanding the split saves tim
   the runtime version block (`spec_version`, currently 104 — bump this on any runtime change),
   the block time (6 seconds), the token constants (`UNIT = 1_000_000`, meaning one PIL is a
   million of the smallest unit), and the list of pallets with their fixed indices, inside the
-  `#[frame_support::runtime]` block. The pallets included, in index order 0 to 13, are:
+  `#[frame_support::runtime]` block. The pallets included, in index order 0 to 14, are:
   System, Timestamp, Aura, Grandpa, Balances, TransactionPayment, Sudo, ValidatorSet,
-  Session, Council (a `pallet-collective` instance), Authorship, Registry, Dpp, and
-  RuntimeUpgrade. **Pallet indices are part of the chain's wire format — never renumber an
-  existing pallet; only append new ones.**
+  Session, Council (a `pallet-collective` instance), Authorship, Registry, RuntimeUpgrade
+  (index 13), and Documents (index 14). Index 12 is currently unoccupied: it belonged to the
+  digital product passport pallet, removed from the runtime for spec version 104 and reserved
+  for that pallet's own return in a later version. **Pallet indices are part of the chain's wire
+  format — never renumber an existing pallet, and never reuse an index a removed pallet left
+  behind; only append new ones.**
 - `runtime/src/configs/mod.rs` holds the `impl ... Config for Runtime` block for every pallet.
   This is where each pallet is parameterised: block weights and length limits, the existential
   deposit, the fee formula (`WeightToFee`), the consensus authority limits, and so on.

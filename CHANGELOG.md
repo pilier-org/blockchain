@@ -18,16 +18,22 @@ file, or fails to link at all.
 ## [runtime 104]
 
 ### Added
-- **Product registry and digital product passport pallets.** Two new
-  pallets join the runtime: a registry that projects use to record their company registration
-  number, GS1 product identifiers, reference schemas and storage endpoints, and a digital
-  product passport pallet that publishes passport records and events against those registered
-  products. Administrative calls on both — granting registry permissions and changing the
-  passport publication price — are governed the same way validator changes already are: a
+- **Product registry and evidence-file document pallets.** Two new pallets join the runtime: a
+  registry that projects use to record their company registration number, GS1 product
+  identifiers, reference schemas and storage endpoints, and a documents pallet that holds a
+  chain-wide, deduplicated table of evidence-file fingerprints. Registering a file names the
+  project it is registered under, and only that project's owner or one of its writers — a
+  council-approved project, in other words — may register a file under it; every other account
+  is rejected. Administrative calls on both pallets — granting registry permissions and changing
+  the file registration price — are governed the same way validator changes already are: a
   supermajority (at least 75%) vote of the validators' council, with the root key retained as an
-  emergency override. The publication price itself starts at 0.004 PIL, a value the runtime
+  emergency override. The registration price itself starts at 0.0025 PIL, a value the runtime
   carries directly rather than one set by a migration, and can be changed later by the same
   council vote, without a further runtime upgrade.
+
+  The digital product passport pallet that publishes passport records and events against these
+  registered products is not part of this runtime version; it is planned for a later runtime
+  version.
 
   This is the first upgrade the validators' council authorises by vote, using the mechanism
   runtime 103 added.

@@ -32,6 +32,12 @@ use super::{
     RuntimeOrigin, RuntimeTask, SLOT_DURATION, SessionKeys, System, VERSION, ValidatorSet,
 };
 
+// The digital product passport pallet (`pallet-pilier-dpp`) is removed from this runtime for
+// spec version 104 — see the pallet-index comment in `lib.rs` — so this module no longer holds
+// its `Config` implementation or the `use` import for it. `pallet-pilier-documents`, the new
+// pallet holding what used to be the passport pallet's own evidence-file table, is configured
+// below instead.
+
 /// The council's `pallet-collective` instance. A type alias only — `pallet_collective::Instance1`
 /// is used directly, there being exactly one collective in this runtime for now.
 type CouncilCollective = pallet_collective::Instance1;
@@ -40,7 +46,7 @@ type CouncilCollective = pallet_collective::Instance1;
 /// root (Sudo, an emergency lever) or a council supermajority of at least 75%
 /// (`EnsureProportionAtLeast<.., 3, 4>`). One named definition rather than four inlined copies:
 /// the same origin adds or removes a validator, authorises a runtime upgrade, grants a registry
-/// permission and changes the passport publication price, all at the same threshold.
+/// permission and changes the evidence-file registration price, all at the same threshold.
 pub type CouncilOrRoot = EitherOfDiverse<
     frame_system::EnsureRoot<AccountId>,
     pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>,
@@ -273,8 +279,7 @@ parameter_types! {
 /// emergency lever" composition `pallet_validator_set::Config::AddRemoveOrigin` already uses
 /// above — the validators' council administers the registry exactly as it administers the
 /// validator set itself. Every length bound is named in the `parameter_types!` block above,
-/// carrying its own figure and the rationale for it (`ai/decisions/passport-pallet-runtime-bounds.md`
-/// for the two shared with `pallet-pilier-dpp`).
+/// carrying its own figure and the rationale for it.
 impl pallet_pilier_registry::Config for Runtime {
     type AdminOrigin = CouncilOrRoot;
     type MaxCompanyRegistrationNumberLen = MaxCompanyRegistrationNumberLen;
@@ -295,31 +300,27 @@ parameter_types! {
     /// Upper bound, in bytes, on an evidence file's path remainder.
     pub const MaxFilePathLen: u32 = 256;
     /// Upper bound, in bytes, on an evidence file's content type (for example, a MIME type). 128
-    /// bytes, not the 64 the pallet's own mock once used for its tests: a MIME type as ordinary
-    /// as Microsoft Excel's
+    /// bytes, not the 64 the documents pallet's own mock once used for its tests: a MIME type as
+    /// ordinary as Microsoft Excel's
     /// (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, 65 bytes), Word's
     /// (71 bytes) or PowerPoint's (73 bytes) already exceeds 64 bytes on its own, before even a
-    /// `; charset=utf-8` parameter is added. See `ai/decisions/passport-pallet-runtime-bounds.md`.
+    /// `; charset=utf-8` parameter is added.
     pub const MaxFileContentTypeLen: u32 = 128;
 }
 
-/// Passport configuration. `Registry` and `AdminOrigin` mirror the registry pallet's own wiring
-/// immediately above: the same pallet answers every permission and existence question a
-/// publication depends on, and the same council-or-root origin changes the publication price by
-/// vote (`Pallet::set_price`) that `pallet_validator_set::Config::AddRemoveOrigin` uses to change
-/// the validator set — no runtime upgrade is needed to move the price. `Currency = Balances` is
-/// the same fungible balance every other pallet in this runtime charges against; the price is
-/// paid to the current block's author (or burned, in the rare case no author can be resolved —
-/// see `Pallet::charge_publication_price`'s own documentation), the same destination
-/// `ToAuthor` routes the standard transaction fee to below.
-impl pallet_pilier_dpp::Config for Runtime {
+/// Documents configuration. `Registry` and `AdminOrigin` mirror the registry pallet's own wiring
+/// above: the same pallet answers whether the calling account is a member of the named project
+/// and whether a storage endpoint exists, and the same council-or-root origin changes the
+/// document price by vote (`Pallet::set_price`) that `pallet_validator_set::Config::
+/// AddRemoveOrigin` uses to change the validator set — no runtime upgrade is needed to move the
+/// price. `Currency = Balances` is the same fungible balance every other pallet in this runtime
+/// charges against; the price is paid to the current block's author (or burned, in the rare case
+/// no author can be resolved — see `Pallet::charge_document_price`'s own documentation), the same
+/// destination `ToAuthor` routes the standard transaction fee to below.
+impl pallet_pilier_documents::Config for Runtime {
     type Registry = Registry;
     type Currency = Balances;
     type AdminOrigin = CouncilOrRoot;
-    type MaxCompanyRegistrationNumberLen = MaxCompanyRegistrationNumberLen;
-    type MaxGs1IdLen = MaxGs1IdLen;
-    type MaxRecordBodyLen = MaxRecordBodyLen;
-    type MaxEventLen = MaxEventLen;
     type MaxFilePathLen = MaxFilePathLen;
     type MaxFileContentTypeLen = MaxFileContentTypeLen;
     type WeightInfo = ();

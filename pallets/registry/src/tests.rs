@@ -89,6 +89,28 @@ fn revoked_permission_stops_immediately() {
     });
 }
 
+/// `RegistryAccess::is_project_member` answers "yes" for a project's owner and for an account
+/// added to its writer list, "no" for an outsider who is neither, and "no" for a project
+/// identifier that does not exist.
+#[test]
+fn is_project_member_answers_owner_writer_outsider_and_unknown_project() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::set_project_writers(
+            RuntimeOrigin::root(),
+            0,
+            vec![2],
+        ));
+
+        assert!(<Registry as RegistryAccess<u64>>::is_project_member(0, &1));
+        assert!(<Registry as RegistryAccess<u64>>::is_project_member(0, &2));
+        assert!(!<Registry as RegistryAccess<u64>>::is_project_member(0, &3));
+        assert!(!<Registry as RegistryAccess<u64>>::is_project_member(
+            999, &1
+        ));
+    });
+}
+
 /// An administrative call from an account that is not `T::AdminOrigin` is rejected.
 #[test]
 fn admin_call_from_outsider_is_rejected() {

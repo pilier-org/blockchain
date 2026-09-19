@@ -1,6 +1,6 @@
 [package]
-name = "pallet-pilier-dpp"
-description = "FRAME pallet holding digital product passports: a deduplicated file table, a replaceable head record per passport, and an append-only lifecycle event log."
+name = "pallet-pilier-documents"
+description = "FRAME pallet holding the chain-wide, deduplicated table of evidence-file fingerprints a digital product passport cites as proof, writable only by a project the validators' council has approved."
 version = "0.1.0"
 license = "Apache-2.0"
 authors.workspace = true
@@ -26,7 +26,6 @@ frame-system.workspace = true
 pallet-authorship.workspace = true
 sp-runtime.workspace = true
 pallet-pilier-registry = { path = "../registry", default-features = false }
-pallet-pilier-documents = { path = "../documents", default-features = false }
 
 [dev-dependencies]
 pallet-balances = { default-features = true, workspace = true }
@@ -45,7 +44,6 @@ std = [
 	"frame-system/std",
 	"log/std",
 	"pallet-authorship/std",
-	"pallet-pilier-documents/std",
 	"pallet-pilier-registry/std",
 	"scale-info/std",
 	"sp-runtime/std",
@@ -54,13 +52,11 @@ runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",
 	"frame-support/runtime-benchmarks",
 	"frame-system/runtime-benchmarks",
-	"pallet-pilier-documents/runtime-benchmarks",
 	"pallet-pilier-registry/runtime-benchmarks",
 ]
 try-runtime = [
 	"frame-support/try-runtime",
 	"frame-system/try-runtime",
 	"pallet-authorship/try-runtime",
-	"pallet-pilier-documents/try-runtime",
 	"pallet-pilier-registry/try-runtime",
 ]

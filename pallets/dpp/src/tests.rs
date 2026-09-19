@@ -1,91 +1,6 @@
-use crate::{
-    Call, Error, EventCounts, EventRecord, Events, FileFingerprint, Files, PublicationPrice,
-    mock::*,
-};
+use crate::{Call, Error, EventCounts, EventRecord, Events, PublicationPrice, mock::*};
 use frame_support::{assert_noop, assert_ok, dispatch::Pays};
 use sp_runtime::{DispatchError, TokenError, traits::Hash};
-
-/// Registering a fingerprint that already carries the same storage endpoint, path
-/// and content type succeeds and leaves the existing file table entry untouched.
-#[test]
-fn registering_same_fingerprint_twice_with_matching_data_is_noop() {
-    new_test_ext().execute_with(|| {
-        setup_project_with_permission(1, b"552100554");
-        let endpoint_id = create_storage_endpoint(1, b"552100554");
-        let fingerprint = [7u8; 32];
-
-        assert_ok!(Dpp::register_file(
-            RuntimeOrigin::signed(1),
-            fingerprint,
-            endpoint_id,
-            b"certificates/iso-14001.pdf".to_vec(),
-            b"application/pdf".to_vec(),
-        ));
-        let first = Files::<Test>::get(fingerprint).expect("file must be registered");
-
-        assert_ok!(Dpp::register_file(
-            RuntimeOrigin::signed(1),
-            fingerprint,
-            endpoint_id,
-            b"certificates/iso-14001.pdf".to_vec(),
-            b"application/pdf".to_vec(),
-        ));
-        let second = Files::<Test>::get(fingerprint).expect("file must still be registered");
-
-        assert_eq!(first, second);
-    });
-}
-
-/// Registering a fingerprint that already exists with a different path is rejected
-/// with `Error::FileDataMismatch`, and the existing entry is not overwritten.
-#[test]
-fn registering_existing_fingerprint_with_different_data_is_rejected() {
-    new_test_ext().execute_with(|| {
-        setup_project_with_permission(1, b"552100554");
-        let endpoint_id = create_storage_endpoint(1, b"552100554");
-        let fingerprint = [7u8; 32];
-
-        assert_ok!(Dpp::register_file(
-            RuntimeOrigin::signed(1),
-            fingerprint,
-            endpoint_id,
-            b"certificates/iso-14001.pdf".to_vec(),
-            b"application/pdf".to_vec(),
-        ));
-
-        assert_noop!(
-            Dpp::register_file(
-                RuntimeOrigin::signed(1),
-                fingerprint,
-                endpoint_id,
-                b"certificates/different-file.pdf".to_vec(),
-                b"application/pdf".to_vec(),
-            ),
-            Error::<Test>::FileDataMismatch
-        );
-
-        let stored = Files::<Test>::get(fingerprint).expect("original entry must remain");
-        assert_eq!(&stored.path[..], b"certificates/iso-14001.pdf");
-    });
-}
-
-/// Registering a file against a storage endpoint that does not exist is rejected,
-/// exercising `RegistryAccess::storage_endpoint_exists`.
-#[test]
-fn registering_file_against_unknown_storage_endpoint_is_rejected() {
-    new_test_ext().execute_with(|| {
-        assert_noop!(
-            Dpp::register_file(
-                RuntimeOrigin::signed(1),
-                [1u8; 32],
-                999,
-                b"certificates/iso-14001.pdf".to_vec(),
-                b"application/pdf".to_vec(),
-            ),
-            Error::<Test>::StorageEndpointNotFound
-        );
-    });
-}
 
 /// `publish_head` from an account whose project was never granted the given company
 /// registration number is rejected with `Error::NoPermissionForRegistrationNumber`.
@@ -1380,7 +1295,6 @@ fn publish_head_rejects_insufficient_funds_for_publication_price_and_leaves_stor
         );
 
         assert!(get_head(b"552100554", &gs1_id).is_none());
-        assert_eq!(Files::<Test>::iter().count(), 0);
         assert_eq!(Events::<Test>::iter().count(), 0);
         assert_eq!(EventCounts::<Test>::get(&company, &gs1), 0);
         assert_eq!(
@@ -1388,41 +1302,5 @@ fn publish_head_rejects_insufficient_funds_for_publication_price_and_leaves_stor
             events_before,
             "no event, including PublicationPriceCharged, must be deposited on this failure"
         );
-    });
-}
-
-/// A `FileInfo` record, written directly at its storage key rather than through
-/// `register_file` — standing in for state a runtime upgrade finds already on chain, written by
-/// whatever code produced it before the upgrade — decodes correctly through this pallet's current
-/// typed storage accessor, `Files::<Test>::get`.
-///
-/// The bytes below are the frozen SCALE encoding of
-/// `FileInfo { storage_endpoint_id: 3, path: b"evidence/fr/552100554/iso-14001.pdf",
-/// content_type: b"application/pdf", registered_at: 17u64 }`, computed once and hard-coded here
-/// rather than produced by calling `.encode()` inside this test: encoding it afresh on every run
-/// would make this test pass even if a future field reorder or type change broke `Decode` for
-/// data a previous version of this pallet actually wrote, which is exactly the failure this
-/// check exists to catch. This is not built from an empty genesis: the record is inserted at the
-/// raw storage key `Files` itself computes, bypassing every dispatchable this pallet declares.
-#[test]
-fn file_info_written_by_prior_code_decodes_correctly_through_current_storage_accessor() {
-    new_test_ext().execute_with(|| {
-        let fingerprint: FileFingerprint = [9u8; 32];
-        let frozen_bytes: &[u8] = &[
-            0x03, 0x00, 0x00, 0x00, 0x8c, 0x65, 0x76, 0x69, 0x64, 0x65, 0x6e, 0x63, 0x65, 0x2f,
-            0x66, 0x72, 0x2f, 0x35, 0x35, 0x32, 0x31, 0x30, 0x30, 0x35, 0x35, 0x34, 0x2f, 0x69,
-            0x73, 0x6f, 0x2d, 0x31, 0x34, 0x30, 0x30, 0x31, 0x2e, 0x70, 0x64, 0x66, 0x3c, 0x61,
-            0x70, 0x70, 0x6c, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2f, 0x70, 0x64, 0x66,
-            0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
-
-        let key = Files::<Test>::hashed_key_for(fingerprint);
-        frame_support::storage::unhashed::put_raw(&key, frozen_bytes);
-
-        let decoded = Files::<Test>::get(fingerprint).expect("frozen bytes must decode");
-        assert_eq!(decoded.storage_endpoint_id, 3);
-        assert_eq!(&decoded.path[..], b"evidence/fr/552100554/iso-14001.pdf");
-        assert_eq!(&decoded.content_type[..], b"application/pdf");
-        assert_eq!(decoded.registered_at, 17);
     });
 }
