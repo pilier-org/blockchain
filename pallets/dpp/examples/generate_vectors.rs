@@ -38,6 +38,7 @@ struct LifecycleEventV1 {
 const MAX_RECORD_BODY_LEN: usize = 4 * 1024;
 const MAX_EVENT_LEN: usize = 128;
 const RUNTIME_SPEC_VERSION: u32 = 105;
+const PALLET_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn hex(bytes: &[u8]) -> String {
     let mut s = String::with_capacity(2 + bytes.len() * 2);
@@ -99,6 +100,7 @@ fn write_record_vector(dir: &Path, name: &str, record: &PassportRecordV1, notes:
              \"generated_by\": \"cargo run --example generate_vectors -p pallet-pilier-dpp\",\n    \
              \"source_commit\": \"{commit}\",\n    \
              \"runtime_spec_version\": {spec},\n    \
+             \"pallet_version\": \"{pallet_version}\",\n    \
              \"notes\": \"{notes}\"\n  \
          }}\n\
          }}\n",
@@ -112,6 +114,7 @@ fn write_record_vector(dir: &Path, name: &str, record: &PassportRecordV1, notes:
         content_fingerprint = fingerprint_of(&bytes),
         commit = option_env!("GENERATOR_SOURCE_COMMIT").unwrap_or("unknown"),
         spec = RUNTIME_SPEC_VERSION,
+        pallet_version = PALLET_VERSION,
         notes = notes,
     );
     write_json(dir, &format!("record-{name}.json"), &json);
@@ -135,6 +138,7 @@ fn write_event_vector_decodable(dir: &Path, name: &str, event: &LifecycleEventV1
              \"generated_by\": \"cargo run --example generate_vectors -p pallet-pilier-dpp\",\n    \
              \"source_commit\": \"{commit}\",\n    \
              \"runtime_spec_version\": {spec},\n    \
+             \"pallet_version\": \"{pallet_version}\",\n    \
              \"notes\": \"{notes}\"\n  \
          }}\n\
          }}\n",
@@ -147,6 +151,7 @@ fn write_event_vector_decodable(dir: &Path, name: &str, event: &LifecycleEventV1
         content_fingerprint = fingerprint_of(&bytes),
         commit = option_env!("GENERATOR_SOURCE_COMMIT").unwrap_or("unknown"),
         spec = RUNTIME_SPEC_VERSION,
+        pallet_version = PALLET_VERSION,
         notes = notes,
     );
     write_json(dir, &format!("event-{name}.json"), &json);
@@ -165,6 +170,7 @@ fn write_event_vector_raw(dir: &Path, name: &str, bytes: &[u8], notes: &str) {
              \"generated_by\": \"cargo run --example generate_vectors -p pallet-pilier-dpp\",\n    \
              \"source_commit\": \"{commit}\",\n    \
              \"runtime_spec_version\": {spec},\n    \
+             \"pallet_version\": \"{pallet_version}\",\n    \
              \"notes\": \"{notes}\"\n  \
          }}\n\
          }}\n",
@@ -174,6 +180,7 @@ fn write_event_vector_raw(dir: &Path, name: &str, bytes: &[u8], notes: &str) {
         content_fingerprint = fingerprint_of(bytes),
         commit = option_env!("GENERATOR_SOURCE_COMMIT").unwrap_or("unknown"),
         spec = RUNTIME_SPEC_VERSION,
+        pallet_version = PALLET_VERSION,
         notes = notes,
     );
     write_json(dir, &format!("event-{name}.json"), &json);
