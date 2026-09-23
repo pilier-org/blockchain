@@ -32,6 +32,7 @@ pallet-pilier-documents = { path = "../documents", default-features = false }
 pallet-balances = { default-features = true, workspace = true }
 pallet-collective = { default-features = true, workspace = true }
 pallet-transaction-payment = { default-features = true, workspace = true }
+serde_json = { default-features = true, workspace = true }
 sp-core = { default-features = true, workspace = true }
 sp-io = { default-features = true, workspace = true }
 sp-runtime = { default-features = true, workspace = true }

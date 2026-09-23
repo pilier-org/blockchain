@@ -1304,3 +1304,124 @@ fn publish_head_rejects_insufficient_funds_for_publication_price_and_leaves_stor
         );
     });
 }
+
+/// A small, self-contained parser used only by the test below: turns the `"0x..."` hex strings
+/// the published vectors carry back into bytes. Not a general hex parser — it trusts its input is
+/// well-formed, exactly as every string these vector files carry is.
+fn decode_hex(hex: &str) -> Vec<u8> {
+    let hex = hex.strip_prefix("0x").unwrap_or(hex);
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("vector file carries valid hex"))
+        .collect()
+}
+
+/// Verifies that this pallet's own schema-example structures — the same `CompositionLine`,
+/// `PassportRecordV1` and `LifecycleEventV1` that
+/// `realistic_passport_body_and_event_fit_declared_budgets` above uses — still produce, byte for
+/// byte, the values published in `src/vectors/*.json`, on `pilier.dev`'s own documentation, and in
+/// the `passport-reader` repository's own copy of the same files. Each vector's `parsed` field is
+/// the value encoded; its `bytes` field is what that encoding must match, so a change to field
+/// order, a field's type, or which fields exist fails this test without needing to touch it. The
+/// event-ceiling vector carries a `null` schema and a `null` parsed form on purpose —
+/// `LifecycleEventV1` is a fixed forty-one bytes for any field values, so no ceiling-sized
+/// decodable instance of it exists — and is checked only for its raw length.
+#[test]
+fn published_vectors_match_this_pallet_s_own_encoding() {
+    use codec::Encode;
+
+    #[derive(Encode)]
+    struct CompositionLine {
+        fibre: Vec<u8>,
+        percentage_bps: u16,
+    }
+
+    #[derive(Encode)]
+    struct PassportRecordV1 {
+        count: u32,
+        composition: Vec<CompositionLine>,
+        composition_source: u8,
+        certificate_fingerprints: Vec<[u8; 32]>,
+    }
+
+    #[derive(Encode)]
+    struct LifecycleEventV1 {
+        event_type: u8,
+        occurred_at_unix_ms: u64,
+        gs1_event_hash: [u8; 32],
+    }
+
+    fn fixed_32(hex: &str) -> [u8; 32] {
+        let bytes = decode_hex(hex);
+        let mut array = [0u8; 32];
+        array.copy_from_slice(&bytes);
+        array
+    }
+
+    let record_files = [
+        include_str!("vectors/record-minimal.json"),
+        include_str!("vectors/record-typical.json"),
+        include_str!("vectors/record-ceiling.json"),
+    ];
+    for contents in record_files {
+        let vector: serde_json::Value =
+            serde_json::from_str(contents).expect("vector file is valid JSON");
+        let expected = decode_hex(vector["bytes"].as_str().unwrap());
+        let parsed = &vector["parsed"];
+        let record = PassportRecordV1 {
+            count: parsed["count"].as_u64().unwrap() as u32,
+            composition: parsed["composition"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|line| CompositionLine {
+                    fibre: line["fibre"].as_str().unwrap().as_bytes().to_vec(),
+                    percentage_bps: line["percentage_bps"].as_u64().unwrap() as u16,
+                })
+                .collect(),
+            composition_source: parsed["composition_source"].as_u64().unwrap() as u8,
+            certificate_fingerprints: parsed["certificate_fingerprints"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fp| fixed_32(fp.as_str().unwrap()))
+                .collect(),
+        };
+        assert_eq!(
+            record.encode(),
+            expected,
+            "vector {:?} no longer matches this pallet's own PassportRecordV1 encoding",
+            vector["name"]
+        );
+    }
+
+    let event_files = [
+        include_str!("vectors/event-minimal.json"),
+        include_str!("vectors/event-typical.json"),
+    ];
+    for contents in event_files {
+        let vector: serde_json::Value =
+            serde_json::from_str(contents).expect("vector file is valid JSON");
+        let expected = decode_hex(vector["bytes"].as_str().unwrap());
+        let parsed = &vector["parsed"];
+        let event = LifecycleEventV1 {
+            event_type: parsed["event_type"].as_u64().unwrap() as u8,
+            occurred_at_unix_ms: parsed["occurred_at_unix_ms"].as_u64().unwrap(),
+            gs1_event_hash: fixed_32(parsed["gs1_event_hash"].as_str().unwrap()),
+        };
+        assert_eq!(
+            event.encode(),
+            expected,
+            "vector {:?} no longer matches this pallet's own LifecycleEventV1 encoding",
+            vector["name"]
+        );
+    }
+
+    let ceiling_vector: serde_json::Value =
+        serde_json::from_str(include_str!("vectors/event-ceiling.json"))
+            .expect("vector file is valid JSON");
+    assert!(ceiling_vector["schema"].is_null());
+    assert!(ceiling_vector["parsed"].is_null());
+    let ceiling_bytes = decode_hex(ceiling_vector["bytes"].as_str().unwrap());
+    assert_eq!(ceiling_bytes.len() as u32, MaxEventLen::get());
+}
