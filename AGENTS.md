@@ -24,24 +24,9 @@ Compact orientation for OpenCode sessions. For the full project story, read `CLA
 
 ## Runtime pallets and a critical ordering rule
 
-Live pallets and their fixed indices in `runtime/src/lib.rs`:
-
-| Index | Pallet |
-|-------|--------|
-| 0 | System |
-| 1 | Timestamp |
-| 2 | Aura |
-| 3 | Grandpa |
-| 4 | Balances |
-| 5 | TransactionPayment |
-| 6 | Sudo |
-| 7 | **ValidatorSet** |
-| 8 | **Session** |
-| 9 | Council (`pallet-collective` Instance1) |
-| 10 | Authorship |
-| 11 | **Registry** (`pallet-pilier-registry`) |
-| 12 | **Dpp** (`pallet-pilier-dpp`) |
-| 13 | **RuntimeUpgrade** (`pallet-runtime-upgrade`) |
+The live pallets and their fixed indices are declared only once, in the
+`#[frame_support::runtime]` block of `runtime/src/lib.rs` — read that block directly rather
+than a list here, which does not track it and has drifted out of step with the source before.
 
 **Ordering constraint:** `ValidatorSet` must have a lower pallet index than `Session`. FRAME builds genesis by ascending index, and `Session` reads `ValidatorSet::Validators` during its genesis build. If `Session` is indexed lower, genesis authorities become empty and the node panics on startup (`genesis authorities is non-empty`).
 
@@ -135,7 +120,7 @@ If genesis changes, regenerate the raw chain specs at the repo root so nodes agr
 
 ## Runtime versioning
 
-- `spec_version` lives in `runtime/src/lib.rs` inside the `VERSION` block (currently `104`). Bump it on any runtime change.
+- `spec_version` lives in `runtime/src/lib.rs` inside the `VERSION` block — read it there for the current number, since this file does not track it. Bump it on any runtime change.
 - It is append-only / monotonically increasing. Never decrease it, even when rebuilding genesis from scratch.
 - The public changelog of what changed per `spec_version` is `CHANGELOG.md` at the repo root.
 
