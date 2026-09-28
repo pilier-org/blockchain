@@ -58,6 +58,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ steps.toolchain.outputs.channel }}-
 
+      - name: Check runtime facts are not duplicated in the hint files
+        run: scripts/check-facts.sh
+
       - name: Format check
         run: cargo fmt --all -- --check
 
