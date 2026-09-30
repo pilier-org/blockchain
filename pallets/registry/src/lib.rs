@@ -92,6 +92,10 @@ pub trait WeightInfo {
     fn create_storage_endpoint() -> frame_support::pallet_prelude::Weight;
     /// Weight for [`Pallet::update_storage_endpoint_address`].
     fn update_storage_endpoint_address() -> frame_support::pallet_prelude::Weight;
+    /// Weight for [`Pallet::propose_project_owner`].
+    fn propose_project_owner() -> frame_support::pallet_prelude::Weight;
+    /// Weight for [`Pallet::accept_project_ownership`].
+    fn accept_project_ownership() -> frame_support::pallet_prelude::Weight;
 }
 
 impl WeightInfo for () {
@@ -125,6 +129,12 @@ impl WeightInfo for () {
     fn update_storage_endpoint_address() -> frame_support::pallet_prelude::Weight {
         frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
     }
+    fn propose_project_owner() -> frame_support::pallet_prelude::Weight {
+        frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
+    }
+    fn accept_project_ownership() -> frame_support::pallet_prelude::Weight {
+        frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
+    }
 }
 
 #[cfg(test)]
@@ -132,6 +142,8 @@ mod mock;
 
 #[cfg(test)]
 mod tests;
+
+pub mod migrations;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -149,7 +161,14 @@ pub mod pallet {
     /// already a `BoundedVec` sized by its own `Config` constant. The pallet is therefore used
     /// with storage-info-driven tooling rather than opting out of it.
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
+
+    /// This pallet's on-chain storage version. Raised to 1 by
+    /// [`migrations::v1::AddSchemaProject`](super::migrations::v1::AddSchemaProject), which adds
+    /// the `project` field to every [`SchemaInfo`] already in storage. A chain created after that
+    /// field existed starts at 1 through this declaration and needs no migration.
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 
     /// The pallet's configuration trait.
     ///
@@ -267,6 +286,14 @@ pub mod pallet {
     #[pallet::storage]
     pub type Projects<T: Config> = StorageMap<_, Blake2_128Concat, ProjectId, ProjectInfo<T>>;
 
+    /// The account named as the successor to a project's ownership but who has not yet accepted
+    /// it. Written by [`Pallet::propose_project_owner`] and cleared when the successor accepts
+    /// with [`Pallet::accept_project_ownership`]. A project appears here only while a handover is
+    /// pending, so ownership can never move to an account that did not sign for it.
+    #[pallet::storage]
+    pub type PendingProjectOwner<T: Config> =
+        StorageMap<_, Blake2_128Concat, ProjectId, T::AccountId>;
+
     /// Which project, if any, currently holds the right to write under a given company
     /// registration number. A registration number maps to at most one project at a time:
     /// granting it to a project is exclusive, and revoking it removes the entry entirely, so the
@@ -371,6 +398,10 @@ pub mod pallet {
         /// The hash of `description`, computed with the chain's own hashing algorithm at
         /// registration time.
         pub fingerprint: T::Hash,
+        /// The project this schema was registered for. `Some(id)` names that project, whether the
+        /// schema was registered by its owner or by `T::AdminOrigin` on its behalf. `None` only on
+        /// schemas registered before this field existed; the pallet never writes `None` itself.
+        pub project: Option<ProjectId>,
     }
 
     /// Every schema the pallet knows about, keyed by its identifier.
@@ -433,6 +464,18 @@ pub mod pallet {
             project_id: ProjectId,
             writers: ProjectWriters<T>,
         },
+        /// A successor was named for a project's ownership. Ownership does not change until the
+        /// named successor accepts it with [`Pallet::accept_project_ownership`].
+        ProjectOwnerProposed {
+            project_id: ProjectId,
+            new_owner: T::AccountId,
+        },
+        /// A project's ownership was transferred to the successor who accepted it.
+        ProjectOwnershipTransferred {
+            project_id: ProjectId,
+            old_owner: T::AccountId,
+            new_owner: T::AccountId,
+        },
         /// A project was granted the right to write under a company registration number.
         RegistrationNumberGranted {
             company_registration_number: CompanyRegistrationNumber<T>,
@@ -466,6 +509,7 @@ pub mod pallet {
             category: u32,
             version: u32,
             fingerprint: T::Hash,
+            project: ProjectId,
         },
         /// A storage endpoint was created.
         StorageEndpointCreated {
@@ -486,6 +530,12 @@ pub mod pallet {
     pub enum Error<T> {
         /// No project exists with the given identifier.
         ProjectNotFound,
+        /// A signed caller is not the owner of the project this call acts on.
+        NotProjectOwner,
+        /// No successor has been named for this project's ownership.
+        NoPendingOwnership,
+        /// The signer is not the successor named for this project's ownership.
+        NotProposedOwner,
         /// The writer list does not fit `T::MaxProjectWriters`.
         TooManyWriters,
         /// The company registration number does not fit `T::MaxCompanyRegistrationNumberLen`.
@@ -645,8 +695,9 @@ pub mod pallet {
 
         /// Create a new code registry named `name`, writable by `writer_project`.
         ///
-        /// Must be called by `T::AdminOrigin`. Fails with [`Error::ProjectNotFound`] if
-        /// `writer_project` does not name an existing project.
+        /// Must be called by `writer_project`'s own owner or by `T::AdminOrigin`. Fails with
+        /// [`Error::NotProjectOwner`] if a signed caller is not that project's owner, and with
+        /// [`Error::ProjectNotFound`] if `writer_project` does not name an existing project.
         #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::create_registry_type())]
         pub fn create_registry_type(
@@ -654,7 +705,7 @@ pub mod pallet {
             name: Vec<u8>,
             writer_project: ProjectId,
         ) -> DispatchResult {
-            T::AdminOrigin::ensure_origin(origin)?;
+            Self::ensure_owner_or_admin(origin, writer_project)?;
             ensure!(
                 Projects::<T>::contains_key(writer_project),
                 Error::<T>::ProjectNotFound
@@ -741,8 +792,11 @@ pub mod pallet {
         /// Mark a code registry entry deprecated, without removing it: a passport that already
         /// carries its number still resolves.
         ///
-        /// Must be called by `T::AdminOrigin`. Fails with [`Error::RegistryEntryNotFound`] if no
-        /// entry exists with the given registry and entry identifier.
+        /// Must be called by the owner of the project that this registry names as its writer, or
+        /// by `T::AdminOrigin`. Fails with [`Error::RegistryTypeNotFound`] if `registry_type_id`
+        /// does not name an existing registry, with [`Error::NotProjectOwner`] if a signed caller
+        /// is not that project's owner, and with [`Error::RegistryEntryNotFound`] if no entry
+        /// exists with the given registry and entry identifier.
         #[pallet::call_index(6)]
         #[pallet::weight(T::WeightInfo::deprecate_registry_entry())]
         pub fn deprecate_registry_entry(
@@ -750,7 +804,9 @@ pub mod pallet {
             registry_type_id: RegistryTypeId,
             entry_id: RegistryEntryId,
         ) -> DispatchResult {
-            T::AdminOrigin::ensure_origin(origin)?;
+            let registry_type = RegistryTypes::<T>::get(registry_type_id)
+                .ok_or(Error::<T>::RegistryTypeNotFound)?;
+            Self::ensure_owner_or_admin(origin, registry_type.writer_project)?;
 
             RegistryEntries::<T>::try_mutate(
                 registry_type_id,
@@ -772,21 +828,27 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Register a schema for product `category`, version `version`, with `description`
-        /// stored on chain in full. `fingerprint` is computed by the pallet from `description`
-        /// at registration time, so it can never disagree with what is stored.
+        /// Register a schema for `project_id`, product `category`, version `version`, with
+        /// `description` stored on chain in full. `fingerprint` is computed by the pallet from
+        /// `description` at registration time, so it can never disagree with what is stored.
+        /// Correcting a schema is a new registration with a new version, never a rewrite: a
+        /// passport already published against a schema refers to it by number.
         ///
-        /// Must be called by `T::AdminOrigin`. Fails with [`Error::SchemaDescriptionTooLong`] if
-        /// `description` does not fit `T::MaxSchemaDescriptionLen`.
+        /// Must be called by `project_id`'s own owner or by `T::AdminOrigin`. Fails with
+        /// [`Error::NotProjectOwner`] if a signed caller is not that project's owner, with
+        /// [`Error::ProjectNotFound`] if a signed caller names a project that does not exist, and
+        /// with [`Error::SchemaDescriptionTooLong`] if `description` does not fit
+        /// `T::MaxSchemaDescriptionLen`.
         #[pallet::call_index(7)]
         #[pallet::weight(T::WeightInfo::register_schema())]
         pub fn register_schema(
             origin: OriginFor<T>,
+            project_id: ProjectId,
             category: u32,
             version: u32,
             description: Vec<u8>,
         ) -> DispatchResult {
-            T::AdminOrigin::ensure_origin(origin)?;
+            Self::ensure_owner_or_admin(origin, project_id)?;
 
             let description: SchemaDescription<T> = description
                 .try_into()
@@ -802,6 +864,7 @@ pub mod pallet {
                     version,
                     description,
                     fingerprint,
+                    project: Some(project_id),
                 },
             );
 
@@ -810,6 +873,7 @@ pub mod pallet {
                 category,
                 version,
                 fingerprint,
+                project: project_id,
             });
             Ok(())
         }
@@ -906,9 +970,100 @@ pub mod pallet {
             });
             Ok(())
         }
+
+        /// Name `new_owner` as the successor to `project_id`'s ownership. Ownership does not
+        /// change here: it changes only when `new_owner` accepts it with
+        /// [`Pallet::accept_project_ownership`]. Calling this again before acceptance replaces the
+        /// named successor. This two-step handover means a typo in the successor's address is
+        /// harmless — an account that never accepts never becomes the owner.
+        ///
+        /// Must be called by `project_id`'s own owner or by `T::AdminOrigin`. Fails with
+        /// [`Error::ProjectNotFound`] if `project_id` does not name an existing project, and with
+        /// [`Error::NotProjectOwner`] if a signed caller is not that project's owner.
+        #[pallet::call_index(10)]
+        #[pallet::weight(T::WeightInfo::propose_project_owner())]
+        pub fn propose_project_owner(
+            origin: OriginFor<T>,
+            project_id: ProjectId,
+            new_owner: T::AccountId,
+        ) -> DispatchResult {
+            Self::ensure_owner_or_admin(origin, project_id)?;
+            ensure!(
+                Projects::<T>::contains_key(project_id),
+                Error::<T>::ProjectNotFound
+            );
+
+            PendingProjectOwner::<T>::insert(project_id, new_owner.clone());
+            Self::deposit_event(Event::ProjectOwnerProposed {
+                project_id,
+                new_owner,
+            });
+            Ok(())
+        }
+
+        /// Accept ownership of `project_id`, previously offered with
+        /// [`Pallet::propose_project_owner`]. Ownership passes to the signer and the pending
+        /// record is cleared; the project's writer list is left untouched, so a previous owner
+        /// that should stay a writer is added separately.
+        ///
+        /// Must be called by the named successor. Fails with [`Error::NoPendingOwnership`] if no
+        /// successor has been named for this project, and with [`Error::NotProposedOwner`] if the
+        /// signer is not the named successor.
+        #[pallet::call_index(11)]
+        #[pallet::weight(T::WeightInfo::accept_project_ownership())]
+        pub fn accept_project_ownership(
+            origin: OriginFor<T>,
+            project_id: ProjectId,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let new_owner =
+                PendingProjectOwner::<T>::get(project_id).ok_or(Error::<T>::NoPendingOwnership)?;
+            ensure!(who == new_owner, Error::<T>::NotProposedOwner);
+
+            let old_owner = Projects::<T>::try_mutate(
+                project_id,
+                |maybe_project| -> Result<T::AccountId, DispatchError> {
+                    let project = maybe_project.as_mut().ok_or(Error::<T>::ProjectNotFound)?;
+                    let old_owner = project.owner.clone();
+                    project.owner = new_owner.clone();
+                    Ok(old_owner)
+                },
+            )?;
+            PendingProjectOwner::<T>::remove(project_id);
+
+            Self::deposit_event(Event::ProjectOwnershipTransferred {
+                project_id,
+                old_owner,
+                new_owner,
+            });
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
+        /// Ensure `origin` is allowed to act on `project_id`: either it satisfies
+        /// `T::AdminOrigin`, or it is a signed account equal to the project's owner. A project's
+        /// writers do not pass — creating code registries and schemas and handing over ownership
+        /// are the owner's own rights, not a writer's. Returns [`Error::ProjectNotFound`] if a
+        /// signed caller names a project that does not exist, and [`Error::NotProjectOwner`] if a
+        /// signed caller is not that project's owner.
+        pub fn ensure_owner_or_admin(
+            origin: OriginFor<T>,
+            project_id: ProjectId,
+        ) -> DispatchResult {
+            match T::AdminOrigin::try_origin(origin) {
+                Ok(_) => Ok(()),
+                Err(origin) => {
+                    let who = ensure_signed(origin)?;
+                    let project =
+                        Projects::<T>::get(project_id).ok_or(Error::<T>::ProjectNotFound)?;
+                    ensure!(project.owner == who, Error::<T>::NotProjectOwner);
+                    Ok(())
+                }
+            }
+        }
+
         /// Returns whether `who` is a member of `project_id` — its owner or one of its writers.
         /// Returns `false` if no project exists with that identifier.
         pub fn is_project_member(project_id: ProjectId, who: &T::AccountId) -> bool {

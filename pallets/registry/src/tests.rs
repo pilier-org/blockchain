@@ -1,4 +1,6 @@
-use crate::{Error, Event, RegistryAccess, RegistryEntries, Schemas, StorageEndpoints, mock::*};
+use crate::{
+    Error, Event, Projects, RegistryAccess, RegistryEntries, Schemas, StorageEndpoints, mock::*,
+};
 use frame_support::{assert_noop, assert_ok};
 use sp_runtime::{DispatchError, traits::Hash};
 
@@ -233,6 +235,7 @@ fn nonexistent_schema_is_rejected() {
 
         assert_ok!(Registry::register_schema(
             RuntimeOrigin::root(),
+            0,
             1,
             1,
             b"{\"fields\":[]}".to_vec()
@@ -253,6 +256,7 @@ fn schema_description_round_trips_with_matching_fingerprint() {
 
         assert_ok!(Registry::register_schema(
             RuntimeOrigin::root(),
+            0,
             7,
             1,
             description.clone()
@@ -446,10 +450,11 @@ fn event_composition_for_every_mutating_call() {
             .into(),
         );
 
-        // 8. register_schema -> SchemaRegistered { schema_id, category, version, fingerprint }
+        // 8. register_schema -> SchemaRegistered { schema_id, category, version, fingerprint, project }
         let description = b"{\"fields\":[]}".to_vec();
         assert_ok!(Registry::register_schema(
             RuntimeOrigin::root(),
+            0,
             1,
             1,
             description.clone()
@@ -461,6 +466,7 @@ fn event_composition_for_every_mutating_call() {
                 category: 1,
                 version: 1,
                 fingerprint,
+                project: 0,
             }
             .into(),
         );
@@ -501,5 +507,433 @@ fn event_composition_for_every_mutating_call() {
             }
             .into(),
         );
+    });
+}
+
+/// `ensure_owner_or_admin` admits the admin origin (root, in this mock) and the named project's
+/// own owner: the two callers allowed to create a project's registries and schemas.
+#[test]
+fn ensure_owner_or_admin_admits_root_and_owner() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        assert_ok!(Registry::ensure_owner_or_admin(RuntimeOrigin::root(), 0));
+        assert_ok!(Registry::ensure_owner_or_admin(RuntimeOrigin::signed(1), 0));
+    });
+}
+
+/// `ensure_owner_or_admin` rejects a project's writer, an unrelated account, and a signed origin
+/// naming a project that does not exist: a writer is not the owner, so it may not create the
+/// project's registries or schemas.
+#[test]
+fn ensure_owner_or_admin_rejects_writer_outsider_and_unknown_project() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1, with account 2 added as a writer.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::set_project_writers(
+            RuntimeOrigin::root(),
+            0,
+            vec![2]
+        ));
+
+        // A writer is not the owner.
+        assert_noop!(
+            Registry::ensure_owner_or_admin(RuntimeOrigin::signed(2), 0),
+            Error::<Test>::NotProjectOwner
+        );
+        // An unrelated account is not the owner.
+        assert_noop!(
+            Registry::ensure_owner_or_admin(RuntimeOrigin::signed(3), 0),
+            Error::<Test>::NotProjectOwner
+        );
+        // A signed caller naming a project that does not exist.
+        assert_noop!(
+            Registry::ensure_owner_or_admin(RuntimeOrigin::signed(1), 99),
+            Error::<Test>::ProjectNotFound
+        );
+    });
+}
+
+/// A project's own owner creates a code registry naming their own project as its writer.
+#[test]
+fn project_owner_creates_registry_for_own_project() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        assert_ok!(Registry::create_registry_type(
+            RuntimeOrigin::signed(1),
+            b"Textile fibres per Regulation 1007/2011".to_vec(),
+            0
+        ));
+    });
+}
+
+/// A project's owner cannot create a code registry that names a different project as its writer.
+#[test]
+fn project_owner_cannot_create_registry_for_another_project() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1, project 1 owned by account 2.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 2));
+
+        // Account 1 owns project 0, not project 1.
+        assert_noop!(
+            Registry::create_registry_type(RuntimeOrigin::signed(1), b"reg".to_vec(), 1),
+            Error::<Test>::NotProjectOwner
+        );
+    });
+}
+
+/// A project's writer, who is not its owner, cannot create a code registry for the project.
+#[test]
+fn project_writer_cannot_create_registry() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1, with account 2 added as a writer.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::set_project_writers(
+            RuntimeOrigin::root(),
+            0,
+            vec![2]
+        ));
+
+        assert_noop!(
+            Registry::create_registry_type(RuntimeOrigin::signed(2), b"reg".to_vec(), 0),
+            Error::<Test>::NotProjectOwner
+        );
+    });
+}
+
+/// The admin origin (root) still creates a code registry for any project.
+#[test]
+fn root_creates_registry_for_any_project() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        assert_ok!(Registry::create_registry_type(
+            RuntimeOrigin::root(),
+            b"reg".to_vec(),
+            0
+        ));
+    });
+}
+
+/// The project owner and the admin origin (root) may mark an entry of that project's registry
+/// deprecated; a different project's owner and a writer of the project may not.
+#[test]
+fn deprecate_registry_entry_owner_and_root_pass_writer_and_foreign_owner_rejected() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1, project 1 owned by account 2, account 3 a writer on
+        // project 0.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 2));
+        assert_ok!(Registry::set_project_writers(
+            RuntimeOrigin::root(),
+            0,
+            vec![3]
+        ));
+
+        // Registry 0 is writable by project 0; add three entries as its owner.
+        assert_ok!(Registry::create_registry_type(
+            RuntimeOrigin::signed(1),
+            b"reg".to_vec(),
+            0
+        ));
+        assert_ok!(Registry::add_registry_entry(
+            RuntimeOrigin::signed(1),
+            0,
+            b"a".to_vec()
+        ));
+        assert_ok!(Registry::add_registry_entry(
+            RuntimeOrigin::signed(1),
+            0,
+            b"b".to_vec()
+        ));
+
+        // A different project's owner cannot deprecate an entry of project 0's registry.
+        assert_noop!(
+            Registry::deprecate_registry_entry(RuntimeOrigin::signed(2), 0, 0),
+            Error::<Test>::NotProjectOwner
+        );
+        // A writer of project 0 (account 3) is not its owner.
+        assert_noop!(
+            Registry::deprecate_registry_entry(RuntimeOrigin::signed(3), 0, 0),
+            Error::<Test>::NotProjectOwner
+        );
+        // The project's owner may.
+        assert_ok!(Registry::deprecate_registry_entry(
+            RuntimeOrigin::signed(1),
+            0,
+            0
+        ));
+        // Root may, for any project's registry.
+        assert_ok!(Registry::deprecate_registry_entry(
+            RuntimeOrigin::root(),
+            0,
+            1
+        ));
+    });
+}
+
+/// A project's owner registers a schema for their own project; the stored schema and the emitted
+/// event both carry that project's identifier.
+#[test]
+fn project_owner_registers_schema_for_own_project() {
+    new_test_ext().execute_with(|| {
+        System::set_block_number(1);
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        assert_ok!(Registry::register_schema(
+            RuntimeOrigin::signed(1),
+            0,
+            7,
+            1,
+            b"{}".to_vec()
+        ));
+
+        let schema = Schemas::<Test>::get(0).expect("schema must be stored");
+        assert_eq!(schema.project, Some(0));
+
+        let fingerprint = <Test as frame_system::Config>::Hashing::hash(b"{}");
+        System::assert_last_event(
+            Event::SchemaRegistered {
+                schema_id: 0,
+                category: 7,
+                version: 1,
+                fingerprint,
+                project: 0,
+            }
+            .into(),
+        );
+    });
+}
+
+/// A different project's owner, a writer of the project, and an unrelated account may not
+/// register a schema for the project: only its owner (or the admin origin) may.
+#[test]
+fn schema_registration_rejected_for_foreign_owner_writer_and_outsider() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1, project 1 owned by account 2, account 3 a writer on
+        // project 0.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 2));
+        assert_ok!(Registry::set_project_writers(
+            RuntimeOrigin::root(),
+            0,
+            vec![3]
+        ));
+
+        // A different project's owner.
+        assert_noop!(
+            Registry::register_schema(RuntimeOrigin::signed(2), 0, 1, 1, b"{}".to_vec()),
+            Error::<Test>::NotProjectOwner
+        );
+        // A writer of project 0, who is not its owner.
+        assert_noop!(
+            Registry::register_schema(RuntimeOrigin::signed(3), 0, 1, 1, b"{}".to_vec()),
+            Error::<Test>::NotProjectOwner
+        );
+        // An unrelated account.
+        assert_noop!(
+            Registry::register_schema(RuntimeOrigin::signed(9), 0, 1, 1, b"{}".to_vec()),
+            Error::<Test>::NotProjectOwner
+        );
+    });
+}
+
+/// The admin origin (root) still registers a schema for any project.
+#[test]
+fn root_registers_schema_for_any_project() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        assert_ok!(Registry::register_schema(
+            RuntimeOrigin::root(),
+            0,
+            1,
+            1,
+            b"{}".to_vec()
+        ));
+        assert_eq!(Schemas::<Test>::get(0).unwrap().project, Some(0));
+    });
+}
+
+/// The v1 migration reads a schema stored in the old four-field format and writes it back with
+/// `project: None`, leaving its other fields untouched; a second run changes nothing.
+#[test]
+fn migration_v1_adds_project_none_and_is_idempotent() {
+    use crate::migrations::v1::AddSchemaProject;
+    use frame_support::traits::OnRuntimeUpgrade;
+
+    new_test_ext().execute_with(|| {
+        // Write one schema in the old four-field format (no `project`), the way it sits on a
+        // chain upgraded from before this field existed.
+        let raw = b"{\"fields\":[\"gtin\"]}".to_vec();
+        let description: crate::SchemaDescription<Test> = raw.clone().try_into().unwrap();
+        let fingerprint = <Test as frame_system::Config>::Hashing::hash(&raw);
+        let old_value: (u32, u32, crate::SchemaDescription<Test>, sp_core::H256) =
+            (7, 3, description.clone(), fingerprint);
+        let key = Schemas::<Test>::hashed_key_for(0);
+        frame_support::storage::unhashed::put(&key, &old_value);
+
+        // The migration turns it into the new format: project == None, other fields unchanged.
+        let _ = AddSchemaProject::<Test>::on_runtime_upgrade();
+        let migrated = Schemas::<Test>::get(0).expect("schema must remain in storage");
+        assert_eq!(migrated.category, 7);
+        assert_eq!(migrated.version, 3);
+        assert_eq!(migrated.description, description);
+        assert_eq!(migrated.fingerprint, fingerprint);
+        assert_eq!(migrated.project, None);
+
+        // Running the migration again changes nothing: the storage-version guard returns early.
+        let _ = AddSchemaProject::<Test>::on_runtime_upgrade();
+        let after = Schemas::<Test>::get(0).expect("schema must remain in storage");
+        assert_eq!(after, migrated);
+    });
+}
+
+/// The full ownership handover: the owner names a successor, and ownership changes only once the
+/// successor accepts. The transfer event names both the old and the new owner.
+#[test]
+fn project_ownership_transfers_only_after_the_successor_accepts() {
+    new_test_ext().execute_with(|| {
+        System::set_block_number(1);
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        // Naming a successor does not change ownership yet.
+        assert_ok!(Registry::propose_project_owner(
+            RuntimeOrigin::signed(1),
+            0,
+            2
+        ));
+        assert_eq!(Projects::<Test>::get(0).unwrap().owner, 1);
+
+        // The successor accepts; ownership passes to account 2 and the pending record clears.
+        assert_ok!(Registry::accept_project_ownership(
+            RuntimeOrigin::signed(2),
+            0
+        ));
+        assert_eq!(Projects::<Test>::get(0).unwrap().owner, 2);
+        assert!(crate::PendingProjectOwner::<Test>::get(0).is_none());
+        System::assert_last_event(
+            Event::ProjectOwnershipTransferred {
+                project_id: 0,
+                old_owner: 1,
+                new_owner: 2,
+            }
+            .into(),
+        );
+    });
+}
+
+/// An account that was not named as the successor cannot accept a project's ownership.
+#[test]
+fn ownership_acceptance_rejected_for_account_not_named_successor() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::propose_project_owner(
+            RuntimeOrigin::signed(1),
+            0,
+            2
+        ));
+
+        // Account 3 was not named.
+        assert_noop!(
+            Registry::accept_project_ownership(RuntimeOrigin::signed(3), 0),
+            Error::<Test>::NotProposedOwner
+        );
+    });
+}
+
+/// Accepting ownership with no proposal outstanding is rejected.
+#[test]
+fn ownership_acceptance_rejected_when_no_proposal_outstanding() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        assert_noop!(
+            Registry::accept_project_ownership(RuntimeOrigin::signed(2), 0),
+            Error::<Test>::NoPendingOwnership
+        );
+    });
+}
+
+/// A second proposal replaces the first named successor: only the latest-named account may accept.
+#[test]
+fn second_ownership_proposal_replaces_the_named_successor() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::propose_project_owner(
+            RuntimeOrigin::signed(1),
+            0,
+            2
+        ));
+        assert_ok!(Registry::propose_project_owner(
+            RuntimeOrigin::signed(1),
+            0,
+            3
+        ));
+
+        // The first-named successor can no longer accept.
+        assert_noop!(
+            Registry::accept_project_ownership(RuntimeOrigin::signed(2), 0),
+            Error::<Test>::NotProposedOwner
+        );
+        // The latest-named successor can.
+        assert_ok!(Registry::accept_project_ownership(
+            RuntimeOrigin::signed(3),
+            0
+        ));
+        assert_eq!(Projects::<Test>::get(0).unwrap().owner, 3);
+    });
+}
+
+/// The admin origin (root) may name a successor on the owner's behalf.
+#[test]
+fn root_may_propose_a_successor() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        assert_ok!(Registry::propose_project_owner(RuntimeOrigin::root(), 0, 2));
+        assert_ok!(Registry::accept_project_ownership(
+            RuntimeOrigin::signed(2),
+            0
+        ));
+        assert_eq!(Projects::<Test>::get(0).unwrap().owner, 2);
+    });
+}
+
+/// After a handover the previous owner, who is not on the writer list, can no longer create the
+/// project's registries, while the new owner can.
+#[test]
+fn after_handover_previous_owner_loses_registry_rights_and_new_owner_gains_them() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::propose_project_owner(
+            RuntimeOrigin::signed(1),
+            0,
+            2
+        ));
+        assert_ok!(Registry::accept_project_ownership(
+            RuntimeOrigin::signed(2),
+            0
+        ));
+
+        // The previous owner (account 1) is not a writer and no longer the owner.
+        assert_noop!(
+            Registry::create_registry_type(RuntimeOrigin::signed(1), b"reg".to_vec(), 0),
+            Error::<Test>::NotProjectOwner
+        );
+        // The new owner (account 2) can.
+        assert_ok!(Registry::create_registry_type(
+            RuntimeOrigin::signed(2),
+            b"reg".to_vec(),
+            0
+        ));
     });
 }

@@ -368,7 +368,7 @@ pub fn setup_project_with_permission(owner: AccountId, company_registration_numb
 pub fn register_schema() -> u32 {
     let schema_id = pallet_pilier_registry::NextSchemaId::<Test>::get();
     assert!(
-        Registry::register_schema(RuntimeOrigin::root(), 1, 1, b"test schema".to_vec()).is_ok()
+        Registry::register_schema(RuntimeOrigin::root(), 0, 1, 1, b"test schema".to_vec()).is_ok()
     );
     schema_id
 }

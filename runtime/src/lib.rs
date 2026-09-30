@@ -128,12 +128,13 @@ pub type UncheckedExtrinsic =
 
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, TxExtension>;
 
-// No migration is declared here. `pallet-pilier-documents`'s `DocumentPrice` carries its own
-// storage default (`DefaultDocumentPrice`, in `pallets/documents/src/lib.rs`), read for any key
-// that has never been written — the state this pallet is in the moment it is first declared
-// below, since it carries no genesis config of its own. A written value, including a written
-// zero, always overrides that default.
-type Migrations = ();
+// The registry pallet's v1 migration gives every schema already in storage the `project` field
+// it gained this version, filling it with `None` for schemas registered before the field existed.
+// It runs once, guarded by the pallet's on-chain storage version, and is a no-op on any later
+// upgrade. `pallet-pilier-documents`'s `DocumentPrice` still needs no migration: it carries its
+// own storage default (`DefaultDocumentPrice`, in `pallets/documents/src/lib.rs`), read for any
+// key that has never been written, and a written value always overrides that default.
+type Migrations = (pallet_pilier_registry::migrations::v1::AddSchemaProject<Runtime>,);
 
 pub type Executive = frame_executive::Executive<
     Runtime,
