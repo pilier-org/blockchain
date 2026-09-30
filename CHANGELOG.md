@@ -15,6 +15,35 @@ That fingerprint is reproducible because the compiler is pinned to an exact vers
 image build with that version. Building the runtime with a newer compiler produces a different
 file, or fails to link at all.
 
+## [runtime 106]
+
+### Changed
+- **A project manages its own registry types, schemas, writer keys and ownership.** Until this
+  release, adding a registry type or registering a reference schema required the supermajority
+  council vote (or the root key) that governs every administrative call in this runtime. From
+  this release a project's own owner performs these directly: it creates the project's registry
+  types, registers its schemas, adds and removes the writer keys allowed to record entries, and
+  transfers the project's ownership. The council and root key keep the powers they already had;
+  what changes is that routine project data management no longer needs either of them.
+- **`register_schema` now names the project.** The call takes the project identifier as its
+  first argument, so a schema belongs to the project that registered it rather than to the chain
+  at large.
+
+### Added
+- **Project ownership handover and writer management.** New registry calls let a project's
+  current owner propose a new owner, let the proposed account accept ownership, and let the owner
+  add or remove writer keys. Accepting ownership does not by itself make the previous owner a
+  writer, so an owner that must keep writing registers itself as a writer before handing the
+  project over.
+
+### Storage migration
+- **Every schema record gains a `project` field.** A one-time migration rewrites each schema
+  already in storage with `project` set to none, and raises the registry pallet's on-chain
+  storage version to 1. Because this changes the format of storage that already holds live data,
+  a runtime carrying the previous format can no longer read it: reverting this upgrade by
+  submitting the older runtime is not possible, and the only supported rollback is restoring
+  nodes from a state snapshot taken before the upgrade.
+
 ## [runtime 105]
 
 ### Added
