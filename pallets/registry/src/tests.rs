@@ -937,3 +937,195 @@ fn after_handover_previous_owner_loses_registry_rights_and_new_owner_gains_them(
         ));
     });
 }
+
+/// A project's own owner, signing with an ordinary key, adds a writer and later removes it: the
+/// writer list reflects each change and each call deposits its own event.
+#[test]
+fn project_owner_adds_and_removes_a_writer_with_an_ordinary_signature() {
+    new_test_ext().execute_with(|| {
+        System::set_block_number(1);
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        // The owner adds account 2 as a writer.
+        assert_ok!(Registry::add_writer(RuntimeOrigin::signed(1), 0, 2));
+        assert_eq!(
+            Projects::<Test>::get(0).unwrap().writers.into_inner(),
+            vec![2]
+        );
+        System::assert_last_event(
+            Event::ProjectWriterAdded {
+                project_id: 0,
+                account: 2,
+            }
+            .into(),
+        );
+
+        // The owner removes account 2 again.
+        assert_ok!(Registry::remove_writer(RuntimeOrigin::signed(1), 0, 2));
+        assert!(
+            Projects::<Test>::get(0)
+                .unwrap()
+                .writers
+                .into_inner()
+                .is_empty()
+        );
+        System::assert_last_event(
+            Event::ProjectWriterRemoved {
+                project_id: 0,
+                account: 2,
+            }
+            .into(),
+        );
+    });
+}
+
+/// An account that is not a project's owner cannot add or remove that project's writers: both
+/// calls fail with `NotProjectOwner`.
+#[test]
+fn foreign_account_cannot_add_or_remove_a_writer() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1; account 2 is unrelated.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        assert_noop!(
+            Registry::add_writer(RuntimeOrigin::signed(2), 0, 3),
+            Error::<Test>::NotProjectOwner
+        );
+        assert_noop!(
+            Registry::remove_writer(RuntimeOrigin::signed(2), 0, 3),
+            Error::<Test>::NotProjectOwner
+        );
+    });
+}
+
+/// The admin origin (root) may add and remove a project's writers as an emergency path, even
+/// without the owner's signature.
+#[test]
+fn root_adds_and_removes_a_writer() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        assert_ok!(Registry::add_writer(RuntimeOrigin::root(), 0, 2));
+        assert_eq!(
+            Projects::<Test>::get(0).unwrap().writers.into_inner(),
+            vec![2]
+        );
+        assert_ok!(Registry::remove_writer(RuntimeOrigin::root(), 0, 2));
+        assert!(
+            Projects::<Test>::get(0)
+                .unwrap()
+                .writers
+                .into_inner()
+                .is_empty()
+        );
+    });
+}
+
+/// Adding an account already a member of the project fails with `AlreadyProjectWriter` — both a
+/// writer already on the list and the owner, who is an implicit writer.
+#[test]
+fn adding_an_existing_writer_or_the_owner_fails_already_writer() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::add_writer(RuntimeOrigin::signed(1), 0, 2));
+
+        // Account 2 is already on the writer list.
+        assert_noop!(
+            Registry::add_writer(RuntimeOrigin::signed(1), 0, 2),
+            Error::<Test>::AlreadyProjectWriter
+        );
+        // The owner (account 1) is an implicit writer and cannot be added again.
+        assert_noop!(
+            Registry::add_writer(RuntimeOrigin::signed(1), 0, 1),
+            Error::<Test>::AlreadyProjectWriter
+        );
+    });
+}
+
+/// Removing an account that is not on the writer list fails with `NotProjectWriter`.
+#[test]
+fn removing_an_account_not_on_the_writer_list_fails_not_writer() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1, with account 2 as its only writer.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::add_writer(RuntimeOrigin::signed(1), 0, 2));
+
+        // Account 3 was never added; the owner (account 1) is not on the list either.
+        assert_noop!(
+            Registry::remove_writer(RuntimeOrigin::signed(1), 0, 3),
+            Error::<Test>::NotProjectWriter
+        );
+        assert_noop!(
+            Registry::remove_writer(RuntimeOrigin::signed(1), 0, 1),
+            Error::<Test>::NotProjectWriter
+        );
+    });
+}
+
+/// Adding one writer past the configured `MaxProjectWriters` bound (32, beyond the implicit
+/// owner) fails with `TooManyWriters`; the bound itself is reached without error.
+#[test]
+fn adding_a_thirty_third_writer_fails_too_many() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        // Accounts 2..=33 are 32 writers — exactly the bound.
+        for account in 2..=33u64 {
+            assert_ok!(Registry::add_writer(RuntimeOrigin::signed(1), 0, account));
+        }
+        // Account 34 would be the 33rd writer and does not fit.
+        assert_noop!(
+            Registry::add_writer(RuntimeOrigin::signed(1), 0, 34),
+            Error::<Test>::TooManyWriters
+        );
+    });
+}
+
+/// `set_project_writers`, the whole-list reset, stays an admin-only call: a project's own owner
+/// cannot use it and is rejected with `BadOrigin`.
+#[test]
+fn set_project_writers_from_owner_still_requires_admin() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1.
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+
+        assert_noop!(
+            Registry::set_project_writers(RuntimeOrigin::signed(1), 0, vec![2]),
+            DispatchError::BadOrigin
+        );
+    });
+}
+
+/// A key added by `add_writer` can write an entry to the project's own code registry, and after
+/// `remove_writer` the same key can no longer write.
+#[test]
+fn added_writer_can_write_registry_entry_and_cannot_after_removal() {
+    new_test_ext().execute_with(|| {
+        // Project 0 owned by account 1, with its own code registry (id 0).
+        assert_ok!(Registry::create_project(RuntimeOrigin::root(), 1));
+        assert_ok!(Registry::create_registry_type(
+            RuntimeOrigin::signed(1),
+            b"Textile fibres per Regulation 1007/2011".to_vec(),
+            0
+        ));
+
+        // Account 2, added as a writer, may add an entry.
+        assert_ok!(Registry::add_writer(RuntimeOrigin::signed(1), 0, 2));
+        assert_ok!(Registry::add_registry_entry(
+            RuntimeOrigin::signed(2),
+            0,
+            b"cotton".to_vec()
+        ));
+
+        // Once removed, the same account may no longer add an entry.
+        assert_ok!(Registry::remove_writer(RuntimeOrigin::signed(1), 0, 2));
+        assert_noop!(
+            Registry::add_registry_entry(RuntimeOrigin::signed(2), 0, b"linen".to_vec()),
+            Error::<Test>::NotRegistryTypeWriter
+        );
+    });
+}

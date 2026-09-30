@@ -96,6 +96,10 @@ pub trait WeightInfo {
     fn propose_project_owner() -> frame_support::pallet_prelude::Weight;
     /// Weight for [`Pallet::accept_project_ownership`].
     fn accept_project_ownership() -> frame_support::pallet_prelude::Weight;
+    /// Weight for [`Pallet::add_writer`].
+    fn add_writer() -> frame_support::pallet_prelude::Weight;
+    /// Weight for [`Pallet::remove_writer`].
+    fn remove_writer() -> frame_support::pallet_prelude::Weight;
 }
 
 impl WeightInfo for () {
@@ -133,6 +137,12 @@ impl WeightInfo for () {
         frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
     }
     fn accept_project_ownership() -> frame_support::pallet_prelude::Weight {
+        frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
+    }
+    fn add_writer() -> frame_support::pallet_prelude::Weight {
+        frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
+    }
+    fn remove_writer() -> frame_support::pallet_prelude::Weight {
         frame_support::pallet_prelude::Weight::from_parts(10_000, 0) // TEMPORARY WEIGHT
     }
 }
@@ -523,6 +533,16 @@ pub mod pallet {
             endpoint_id: StorageEndpointId,
             address: StorageEndpointAddress<T>,
         },
+        /// An account was added to a project's writer list.
+        ProjectWriterAdded {
+            project_id: ProjectId,
+            account: T::AccountId,
+        },
+        /// An account was removed from a project's writer list.
+        ProjectWriterRemoved {
+            project_id: ProjectId,
+            account: T::AccountId,
+        },
     }
 
     /// Errors that can be returned by this pallet.
@@ -563,6 +583,11 @@ pub mod pallet {
         NoPermissionForRegistrationNumber,
         /// No storage endpoint exists with the given identifier.
         StorageEndpointNotFound,
+        /// The account is already a member of the project — its owner, or already on its writer
+        /// list — so adding it as a writer would change nothing.
+        AlreadyProjectWriter,
+        /// The account is not on the project's writer list, so there is nothing to remove.
+        NotProjectWriter,
     }
 
     /// The pallet's dispatchable functions ("calls").
@@ -1036,6 +1061,80 @@ pub mod pallet {
                 project_id,
                 old_owner,
                 new_owner,
+            });
+            Ok(())
+        }
+
+        /// Add `account` to `project_id`'s writer list, so it may write on the project's behalf.
+        /// Each call adds exactly one account, so two of a project's own edits never overwrite
+        /// each other the way replacing the whole list would.
+        ///
+        /// Must be called by `project_id`'s own owner or by `T::AdminOrigin`. Fails with
+        /// [`Error::ProjectNotFound`] if `project_id` does not name an existing project, with
+        /// [`Error::NotProjectOwner`] if a signed caller is not that project's owner, with
+        /// [`Error::AlreadyProjectWriter`] if `account` is already a member of the project (its
+        /// owner, who is an implicit writer, or already on the writer list), and with
+        /// [`Error::TooManyWriters`] if the list is already at `T::MaxProjectWriters`.
+        #[pallet::call_index(12)]
+        #[pallet::weight(T::WeightInfo::add_writer())]
+        pub fn add_writer(
+            origin: OriginFor<T>,
+            project_id: ProjectId,
+            account: T::AccountId,
+        ) -> DispatchResult {
+            Self::ensure_owner_or_admin(origin, project_id)?;
+
+            Projects::<T>::try_mutate(project_id, |maybe_project| -> DispatchResult {
+                let project = maybe_project.as_mut().ok_or(Error::<T>::ProjectNotFound)?;
+                ensure!(
+                    project.owner != account && !project.writers.contains(&account),
+                    Error::<T>::AlreadyProjectWriter
+                );
+                project
+                    .writers
+                    .try_push(account.clone())
+                    .map_err(|_| Error::<T>::TooManyWriters)?;
+                Ok(())
+            })?;
+
+            Self::deposit_event(Event::ProjectWriterAdded {
+                project_id,
+                account,
+            });
+            Ok(())
+        }
+
+        /// Remove `account` from `project_id`'s writer list, revoking its right to write on the
+        /// project's behalf. Each call removes exactly one account. The project's owner is an
+        /// implicit writer that is not on the list and cannot be removed this way.
+        ///
+        /// Must be called by `project_id`'s own owner or by `T::AdminOrigin`. Fails with
+        /// [`Error::ProjectNotFound`] if `project_id` does not name an existing project, with
+        /// [`Error::NotProjectOwner`] if a signed caller is not that project's owner, and with
+        /// [`Error::NotProjectWriter`] if `account` is not on the project's writer list.
+        #[pallet::call_index(13)]
+        #[pallet::weight(T::WeightInfo::remove_writer())]
+        pub fn remove_writer(
+            origin: OriginFor<T>,
+            project_id: ProjectId,
+            account: T::AccountId,
+        ) -> DispatchResult {
+            Self::ensure_owner_or_admin(origin, project_id)?;
+
+            Projects::<T>::try_mutate(project_id, |maybe_project| -> DispatchResult {
+                let project = maybe_project.as_mut().ok_or(Error::<T>::ProjectNotFound)?;
+                let position = project
+                    .writers
+                    .iter()
+                    .position(|writer| writer == &account)
+                    .ok_or(Error::<T>::NotProjectWriter)?;
+                project.writers.remove(position);
+                Ok(())
+            })?;
+
+            Self::deposit_event(Event::ProjectWriterRemoved {
+                project_id,
+                account,
             });
             Ok(())
         }
